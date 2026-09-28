@@ -3,12 +3,24 @@ info:
   title: Serviço Notificação — MCEcelulares
   version: "1.0.0"
   description: Envio de e-mails transacionais (assina eventos) e formulário de contato.
+  license:
+    name: UNLICENSED
 servers:
   - url: /notificacao
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 paths:
   /contato:
     post:
+      operationId: enviarContato
       summary: Recebe mensagem do formulário de contato e envia direto por e-mail (não persiste)
+      security: []
       requestBody:
         required: true
         content:
@@ -24,8 +36,10 @@ paths:
                 mensagem: { type: string }
       responses:
         "202": { description: Mensagem recebida e enviada por e-mail }
+        "400": { description: Dados do formulário inválidos }
   /logs/{idPedido}:
     get:
+      operationId: listarNotificacoesPorPedido
       summary: Consulta o histórico de notificações enviadas para um pedido (debug/suporte)
       parameters:
         - in: path
@@ -34,6 +48,7 @@ paths:
           schema: { type: integer }
       responses:
         "200": { description: Lista de notificações enviadas (notificacao_log) }
+        "404": { description: Nenhuma notificação para esse pedido }
 # Este serviço não expõe endpoints de escrita para os eventos —
 # eles chegam via Redis Pub/Sub (canais pedido.criado e pagamento.confirmado),
 # não via HTTP.

@@ -5,7 +5,7 @@ Ao longo do planejamento, várias decisões mudaram (ex.: frete real via API →
 
 ## Como será conduzido
 
-- **Product Backlog:** lista de User Stories priorizadas (ver `product-backlog.md`), gerenciada no Jira.
+- **Product Backlog:** lista de User Stories priorizada, gerenciada no Jira.
 - **Sprints:** sugestão de 1 sprint por fase do roadmap técnico (ex.: Sprint 1 = Fase 0 + Fase 1, Sprint 2 = Identidade + Catálogo em paralelo, Sprint 3 = Vendas + Pagamento + Notificação em paralelo, Sprint 4 = integração + resiliência + frontend, Sprint 5 = CI/CD e ajustes finais).
 - **Divisão de trabalho:** conforme já definido — cada integrante da dupla dono de um conjunto de serviços, com pontos de sincronização nas dependências entre eles (ex.: contrato do endpoint `GET /usuarios/{id}` precisa estar fechado antes de Vendas implementar a validação síncrona).
 - **Critério de "pronto" (Definition of Done) por User Story:** endpoint implementado + testado manualmente + documentado no OpenAPI do serviço + atualizado no Jira.

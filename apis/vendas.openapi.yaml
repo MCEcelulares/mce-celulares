@@ -3,16 +3,29 @@ info:
   title: Serviço Vendas — MCEcelulares
   version: "1.0.0"
   description: Carrinho, criação e acompanhamento de pedidos.
+  license:
+    name: UNLICENSED
 servers:
   - url: /vendas
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 paths:
   /carrinho:
     get:
+      operationId: buscarCarrinho
       summary: Retorna o carrinho ativo do usuário logado
       responses:
         "200": { description: Carrinho com itens e total }
+        "401": { description: Usuário não autenticado }
   /carrinho/itens:
     post:
+      operationId: adicionarItemCarrinho
       summary: Adiciona item ao carrinho
       requestBody:
         required: true
@@ -26,8 +39,10 @@ paths:
                 quantidade: { type: integer }
       responses:
         "201": { description: Item adicionado }
+        "404": { description: Produto não existe }
   /carrinho/itens/{id}:
     patch:
+      operationId: atualizarItemCarrinho
       summary: Atualiza quantidade de um item do carrinho
       parameters:
         - in: path
@@ -36,7 +51,9 @@ paths:
           schema: { type: integer }
       responses:
         "200": { description: Item atualizado }
+        "404": { description: Item não existe no carrinho }
     delete:
+      operationId: removerItemCarrinho
       summary: Remove item do carrinho
       parameters:
         - in: path
@@ -45,18 +62,23 @@ paths:
           schema: { type: integer }
       responses:
         "204": { description: Item removido }
+        "404": { description: Item não existe no carrinho }
   /pedidos:
     post:
+      operationId: criarPedido
       summary: Cria um pedido a partir do carrinho (valida usuário em Identidade e publica pedido.criado)
       responses:
-        "201": { description: Pedido criado, aguardando pagamento }
+        "201": { description: "Pedido criado, aguardando pagamento" }
         "422": { description: Usuário inválido ou carrinho vazio }
     get:
+      operationId: listarPedidos
       summary: Lista pedidos do usuário logado
       responses:
         "200": { description: Lista de pedidos com status }
+        "401": { description: Usuário não autenticado }
   /pedidos/{id}:
     get:
+      operationId: buscarPedidoPorId
       summary: Detalhe de um pedido
       parameters:
         - in: path
@@ -68,6 +90,7 @@ paths:
         "404": { description: Pedido não existe }
   /pedidos/{id}/status:
     patch:
+      operationId: atualizarStatusPedido
       summary: Atualiza status do pedido (chamado internamente pelo serviço Pagamento)
       parameters:
         - in: path
@@ -85,3 +108,4 @@ paths:
                 status: { type: string }
       responses:
         "200": { description: Status atualizado }
+        "404": { description: Pedido não existe }

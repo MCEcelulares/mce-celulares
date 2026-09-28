@@ -3,11 +3,22 @@ info:
   title: Serviço Pagamento — MCEcelulares
   version: "1.0.0"
   description: Processamento e status de pagamento.
+  license:
+    name: UNLICENSED
 servers:
   - url: /pagamento
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 paths:
   /pagamentos:
     post:
+      operationId: registrarPagamento
       summary: Registra pagamento de um pedido (atualiza status em Vendas e publica pagamento.confirmado)
       requestBody:
         required: true
@@ -25,6 +36,7 @@ paths:
         "422": { description: Valor não confere com o pedido }
   /pagamentos/{idPedido}:
     get:
+      operationId: buscarPagamentoPorPedido
       summary: Consulta status de pagamento de um pedido
       parameters:
         - in: path

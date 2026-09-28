@@ -3,12 +3,24 @@ info:
   title: Serviço Catálogo — MCEcelulares
   version: "1.0.0"
   description: Produtos, categorias, marcas, busca e filtros.
+  license:
+    name: UNLICENSED
 servers:
   - url: /catalogo
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 paths:
   /produtos:
     get:
+      operationId: listarProdutos
       summary: Lista produtos com filtros (categoria, marca, faixa de preço, disponibilidade, ordenação)
+      security: []
       parameters:
         - in: query
           name: categoria
@@ -31,9 +43,12 @@ paths:
           schema: { type: string, enum: [recentes, preco_asc, preco_desc] }
       responses:
         "200": { description: Lista de produtos (cache-aside via Redis) }
+        "400": { description: Parâmetros de filtro inválidos }
   /produtos/{id}:
     get:
+      operationId: buscarProdutoPorId
       summary: Detalhe de um produto
+      security: []
       parameters:
         - in: path
           name: id
@@ -43,6 +58,7 @@ paths:
         "200": { description: Produto encontrado (cache-aside via Redis) }
         "404": { description: Produto não existe }
     patch:
+      operationId: atualizarProduto
       summary: Atualiza produto (invalida cache no Redis)
       parameters:
         - in: path
@@ -51,23 +67,36 @@ paths:
           schema: { type: integer }
       responses:
         "200": { description: Produto atualizado }
+        "404": { description: Produto não existe }
   /produtos/destaque:
     get:
+      operationId: listarProdutosDestaque
       summary: Produtos em destaque (para o carrossel da home)
+      security: []
       responses:
         "200": { description: Lista de produtos com destaque=true }
+        "400": { description: Requisição inválida }
   /produtos/recentes:
     get:
+      operationId: listarProdutosRecentes
       summary: Produtos adicionados recentemente (ordenado por criado_em)
+      security: []
       responses:
         "200": { description: Lista de produtos recentes }
+        "400": { description: Requisição inválida }
   /categorias:
     get:
+      operationId: listarCategorias
       summary: Lista categorias
+      security: []
       responses:
         "200": { description: Lista de categorias }
+        "400": { description: Requisição inválida }
   /marcas:
     get:
+      operationId: listarMarcas
       summary: Lista marcas
+      security: []
       responses:
         "200": { description: Lista de marcas }
+        "400": { description: Requisição inválida }

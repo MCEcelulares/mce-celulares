@@ -3,12 +3,24 @@ info:
   title: Serviço Identidade — MCEcelulares
   version: "1.0.0"
   description: Cadastro/autenticação de usuários, endereços e cargos/permissões.
+  license:
+    name: UNLICENSED
 servers:
   - url: /identidade
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 paths:
   /usuarios:
     post:
+      operationId: criarUsuario
       summary: Cria um novo usuário (cadastro local)
+      security: []
       requestBody:
         required: true
         content:
@@ -25,6 +37,7 @@ paths:
         "409": { description: E-mail já cadastrado }
   /usuarios/{id}:
     get:
+      operationId: buscarUsuarioPorId
       summary: Busca um usuário por id (usado internamente pelo serviço Vendas)
       parameters:
         - in: path
@@ -36,7 +49,9 @@ paths:
         "404": { description: Usuário não existe }
   /auth/login:
     post:
+      operationId: login
       summary: Login local (e-mail e senha)
+      security: []
       requestBody:
         required: true
         content:
@@ -48,15 +63,19 @@ paths:
                 email: { type: string }
                 senha: { type: string }
       responses:
-        "200": { description: Login bem-sucedido, retorna token }
+        "200": { description: "Login bem-sucedido, retorna token" }
         "401": { description: Credenciais inválidas }
   /auth/google:
     post:
+      operationId: loginGoogle
       summary: Login/cadastro via Google OAuth
+      security: []
       responses:
         "200": { description: Login bem-sucedido }
+        "401": { description: Token do Google inválido }
   /usuarios/{id}/enderecos:
     get:
+      operationId: listarEnderecos
       summary: Lista endereços cadastrados do usuário
       parameters:
         - in: path
@@ -65,7 +84,9 @@ paths:
           schema: { type: integer }
       responses:
         "200": { description: Lista de endereços }
+        "404": { description: Usuário não existe }
     post:
+      operationId: criarEndereco
       summary: Cadastra novo endereço
       parameters:
         - in: path
@@ -74,8 +95,10 @@ paths:
           schema: { type: integer }
       responses:
         "201": { description: Endereço criado }
+        "400": { description: Dados do endereço inválidos }
   /usuarios/{id}/enderecos/{idEndereco}/principal:
     patch:
+      operationId: marcarEnderecoPrincipal
       summary: Marca um endereço como principal
       parameters:
         - in: path
@@ -88,3 +111,4 @@ paths:
           schema: { type: integer }
       responses:
         "200": { description: Endereço marcado como principal }
+        "404": { description: Endereço não encontrado para esse usuário }
