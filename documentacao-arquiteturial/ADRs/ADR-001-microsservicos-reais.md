@@ -11,3 +11,7 @@ O sistema será dividido em 5 microsserviços independentes, cada um com ciclo d
 ## Consequências
 - **Positivas:** cobre com folga a exigência da rubrica, permite explorar de verdade os temas de comunicação síncrona/assíncrona, cache distribuído e mensageria; equipes (dupla) podem trabalhar em paralelo em serviços diferentes.
 - **Negativas:** aumento real de complexidade operacional (mais containers, mais pontos de falha, necessidade de observabilidade); exige código defensivo (retry/timeout) nas chamadas entre serviços que antes seriam um simples JOIN no monólito.
+
+## Alternativas consideradas
+- **Alternativa 1:** Monólito modular -> não cobria parte da rúbrica
+- **Alternativa 2:** apenas 1 microsserviço -> concordamos que se fossemos fazer microsserviços iriamos fazer de verdade, então vamos nosso máximo para implementar microssevriço em toda parte do sistema

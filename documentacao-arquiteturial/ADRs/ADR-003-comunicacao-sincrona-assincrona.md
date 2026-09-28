@@ -16,3 +16,6 @@ Comunicação síncrona (HTTP) entre serviços acumula latência e acoplamento t
 ## Consequências
 - **Positivas:** o usuário não espera pelo envio de e-mail; menos acoplamento entre Vendas/Pagamento e Notificação; mais fácil escalar o processamento assíncrono depois.
 - **Negativas:** as duas chamadas síncronas continuam sendo pontos únicos de falha e exigem estratégias de resiliência (retry/timeout).
+
+## Alternativas consideradas
+- **Alternativa 1:** Tudo Síncrono via http -> achamos melhor não colocar http em tudo principalmente por causa do nosso sistema de notificação que não é prioridade do sistema

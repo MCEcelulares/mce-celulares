@@ -13,3 +13,6 @@ Cada um dos 5 serviços terá seu próprio banco MySQL (`identidade-db`, `catalo
 ## Consequências
 - **Positivas:** autonomia real de deploy e schema por serviço; histórico de pedidos não se corrompe se o produto ou o cadastro do usuário mudar depois.
 - **Negativas:** perde-se integridade referencial garantida pelo banco; é preciso aceitar consistência eventual e tratar o caso de uma referência "solta" (ex.: usuário validado na hora, mas depois desativado).
+
+## Alternativas consideradas
+- **Alternativa 1:** Mesmo banco para todas as tabelas -> se vamos fazer microsserviços mesmo achamos melhor usar bancos separados
