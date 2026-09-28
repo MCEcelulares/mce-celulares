@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: Serviço Identidade — MCEcelulares
+  version: "1.0.0"
+  description: Cadastro/autenticação de usuários, endereços e cargos/permissões.
+servers:
+  - url: /identidade
+paths:
+  /usuarios:
+    post:
+      summary: Cria um novo usuário (cadastro local)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome, email, senha]
+              properties:
+                nome: { type: string }
+                email: { type: string, format: email }
+                senha: { type: string, format: password }
+      responses:
+        "201": { description: Usuário criado }
+        "409": { description: E-mail já cadastrado }
+  /usuarios/{id}:
+    get:
+      summary: Busca um usuário por id (usado internamente pelo serviço Vendas)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Usuário encontrado }
+        "404": { description: Usuário não existe }
+  /auth/login:
+    post:
+      summary: Login local (e-mail e senha)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, senha]
+              properties:
+                email: { type: string }
+                senha: { type: string }
+      responses:
+        "200": { description: Login bem-sucedido, retorna token }
+        "401": { description: Credenciais inválidas }
+  /auth/google:
+    post:
+      summary: Login/cadastro via Google OAuth
+      responses:
+        "200": { description: Login bem-sucedido }
+  /usuarios/{id}/enderecos:
+    get:
+      summary: Lista endereços cadastrados do usuário
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Lista de endereços }
+    post:
+      summary: Cadastra novo endereço
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "201": { description: Endereço criado }
+  /usuarios/{id}/enderecos/{idEndereco}/principal:
+    patch:
+      summary: Marca um endereço como principal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: idEndereco
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Endereço marcado como principal }

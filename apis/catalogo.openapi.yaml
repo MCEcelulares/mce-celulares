@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: Serviço Catálogo — MCEcelulares
+  version: "1.0.0"
+  description: Produtos, categorias, marcas, busca e filtros.
+servers:
+  - url: /catalogo
+paths:
+  /produtos:
+    get:
+      summary: Lista produtos com filtros (categoria, marca, faixa de preço, disponibilidade, ordenação)
+      parameters:
+        - in: query
+          name: categoria
+          schema: { type: integer }
+        - in: query
+          name: marca
+          schema: { type: integer }
+        - in: query
+          name: precoMin
+          schema: { type: number }
+        - in: query
+          name: precoMax
+          schema: { type: number }
+        - in: query
+          name: busca
+          schema: { type: string }
+          description: Busca full-text pelo nome do produto
+        - in: query
+          name: ordenar
+          schema: { type: string, enum: [recentes, preco_asc, preco_desc] }
+      responses:
+        "200": { description: Lista de produtos (cache-aside via Redis) }
+  /produtos/{id}:
+    get:
+      summary: Detalhe de um produto
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Produto encontrado (cache-aside via Redis) }
+        "404": { description: Produto não existe }
+    patch:
+      summary: Atualiza produto (invalida cache no Redis)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Produto atualizado }
+  /produtos/destaque:
+    get:
+      summary: Produtos em destaque (para o carrossel da home)
+      responses:
+        "200": { description: Lista de produtos com destaque=true }
+  /produtos/recentes:
+    get:
+      summary: Produtos adicionados recentemente (ordenado por criado_em)
+      responses:
+        "200": { description: Lista de produtos recentes }
+  /categorias:
+    get:
+      summary: Lista categorias
+      responses:
+        "200": { description: Lista de categorias }
+  /marcas:
+    get:
+      summary: Lista marcas
+      responses:
+        "200": { description: Lista de marcas }

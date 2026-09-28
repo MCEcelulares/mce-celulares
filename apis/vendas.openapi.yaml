@@ -1,0 +1,87 @@
+openapi: 3.0.3
+info:
+  title: Serviço Vendas — MCEcelulares
+  version: "1.0.0"
+  description: Carrinho, criação e acompanhamento de pedidos.
+servers:
+  - url: /vendas
+paths:
+  /carrinho:
+    get:
+      summary: Retorna o carrinho ativo do usuário logado
+      responses:
+        "200": { description: Carrinho com itens e total }
+  /carrinho/itens:
+    post:
+      summary: Adiciona item ao carrinho
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idProduto, quantidade]
+              properties:
+                idProduto: { type: integer }
+                quantidade: { type: integer }
+      responses:
+        "201": { description: Item adicionado }
+  /carrinho/itens/{id}:
+    patch:
+      summary: Atualiza quantidade de um item do carrinho
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Item atualizado }
+    delete:
+      summary: Remove item do carrinho
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Item removido }
+  /pedidos:
+    post:
+      summary: Cria um pedido a partir do carrinho (valida usuário em Identidade e publica pedido.criado)
+      responses:
+        "201": { description: Pedido criado, aguardando pagamento }
+        "422": { description: Usuário inválido ou carrinho vazio }
+    get:
+      summary: Lista pedidos do usuário logado
+      responses:
+        "200": { description: Lista de pedidos com status }
+  /pedidos/{id}:
+    get:
+      summary: Detalhe de um pedido
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Pedido encontrado }
+        "404": { description: Pedido não existe }
+  /pedidos/{id}/status:
+    patch:
+      summary: Atualiza status do pedido (chamado internamente pelo serviço Pagamento)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string }
+      responses:
+        "200": { description: Status atualizado }

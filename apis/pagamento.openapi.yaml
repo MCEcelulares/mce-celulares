@@ -1,0 +1,36 @@
+openapi: 3.0.3
+info:
+  title: Serviço Pagamento — MCEcelulares
+  version: "1.0.0"
+  description: Processamento e status de pagamento.
+servers:
+  - url: /pagamento
+paths:
+  /pagamentos:
+    post:
+      summary: Registra pagamento de um pedido (atualiza status em Vendas e publica pagamento.confirmado)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idPedido, metodoPagamento, valor]
+              properties:
+                idPedido: { type: integer }
+                metodoPagamento: { type: string }
+                valor: { type: number }
+      responses:
+        "201": { description: Pagamento registrado }
+        "422": { description: Valor não confere com o pedido }
+  /pagamentos/{idPedido}:
+    get:
+      summary: Consulta status de pagamento de um pedido
+      parameters:
+        - in: path
+          name: idPedido
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Pagamento encontrado }
+        "404": { description: Nenhum pagamento para esse pedido }
