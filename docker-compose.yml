@@ -1,0 +1,129 @@
+networks:
+    backend:
+        driver: bridge
+
+volumes:
+    identidade_db_data:
+    catalogo_db_data:
+    vendas_db_data:
+    pagamento_db_data:
+    notificacao_db_data:
+
+services:
+    identidade_db:
+        image: mysql:8.0
+        container_name: identidade_db
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${IDENTIDADE_DB_NAME}
+            MYSQL_ROOT_PASSWORD: ${IDENTIDADE_DB_PASSWORD}
+        volumes:
+          - identidade_db_data:/var/lib/mysql
+          - ./infra/migrations/identidade:/docker-entrypoint-initdb.d
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${IDENTIDADE_DB_PASSWORD}"]
+          interval: 5s
+          timeout: 5s
+          retries: 10
+          start_period: 20s
+        networks:
+          - backend
+
+    catalogo_db:
+        image: mysql:8.0
+        container_name: catalogo_db
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${CATALOGO_DB_NAME}
+            MYSQL_ROOT_PASSWORD: ${CATALOGO_DB_PASSWORD}
+        volumes:
+          - catalogo_db_data:/var/lib/mysql
+          - ./infra/migrations/catalogo:/docker-entrypoint-initdb.d
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${CATALOGO_DB_PASSWORD}"]
+          interval: 5s
+          timeout: 5s
+          retries: 10
+          start_period: 20s
+        networks:
+          - backend
+
+    vendas_db:
+        image: mysql:8.0
+        container_name: vendas_db
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${VENDAS_DB_NAME}
+            MYSQL_ROOT_PASSWORD: ${VENDAS_DB_PASSWORD}
+        volumes:
+          - vendas_db_data:/var/lib/mysql
+          - ./infra/migrations/vendas:/docker-entrypoint-initdb.d
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${VENDAS_DB_PASSWORD}"]
+          interval: 5s
+          timeout: 5s
+          retries: 10
+          start_period: 20s
+        networks:
+          - backend
+
+    pagamento_db:
+        image: mysql:8.0
+        container_name: pagamento_db
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${PAGAMENTO_DB_NAME}
+            MYSQL_ROOT_PASSWORD: ${PAGAMENTO_DB_PASSWORD}
+        volumes:
+          - pagamento_db_data:/var/lib/mysql
+          - ./infra/migrations/pagamento:/docker-entrypoint-initdb.d
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${PAGAMENTO_DB_PASSWORD}"]
+          interval: 5s
+          timeout: 5s
+          retries: 10
+          start_period: 20s
+        networks:
+          - backend
+
+    notificacao_db:
+        image: mysql:8.0
+        container_name: notificacao_db
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${NOTIFICACAO_DB_NAME}
+            MYSQL_ROOT_PASSWORD: ${NOTIFICACAO_DB_PASSWORD}
+        volumes:
+          - notificacao_db_data:/var/lib/mysql
+          - ./infra/migrations/notificacao:/docker-entrypoint-initdb.d
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${NOTIFICACAO_DB_PASSWORD}"]
+          interval: 5s
+          timeout: 5s
+          retries: 10
+          start_period: 20s
+        networks:
+          - backend
+
+    redis:
+      image: redis:7-alpine
+      container_name: redis
+      restart: unless-stopped
+      healthcheck:
+        test: ["CMD", "redis-cli", "ping"]
+        interval: 5s
+        timeout: 5s
+        retries: 10
+      networks:
+        - backend
+
+    nginx:
+      image: nginx:alpine
+      container_name: nginx
+      restart: unless-stopped
+      ports:
+        - "8080:80"
+      volumes:
+        - ./infra/nginx/nginx.conf:/etc/nginx/nginc.conf:ro
+      networks:
+        - backend
