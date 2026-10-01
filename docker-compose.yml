@@ -21,7 +21,7 @@ services:
           - identidade_db_data:/var/lib/mysql
           - ./infra/migrations/identidade:/docker-entrypoint-initdb.d
         healthcheck:
-          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${IDENTIDADE_DB_PASSWORD}"]
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${IDENTIDADE_DB_PASSWORD}"]
           interval: 5s
           timeout: 5s
           retries: 10
@@ -40,7 +40,7 @@ services:
           - catalogo_db_data:/var/lib/mysql
           - ./infra/migrations/catalogo:/docker-entrypoint-initdb.d
         healthcheck:
-          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${CATALOGO_DB_PASSWORD}"]
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${CATALOGO_DB_PASSWORD}"]
           interval: 5s
           timeout: 5s
           retries: 10
@@ -59,7 +59,7 @@ services:
           - vendas_db_data:/var/lib/mysql
           - ./infra/migrations/vendas:/docker-entrypoint-initdb.d
         healthcheck:
-          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${VENDAS_DB_PASSWORD}"]
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${VENDAS_DB_PASSWORD}"]
           interval: 5s
           timeout: 5s
           retries: 10
@@ -78,7 +78,7 @@ services:
           - pagamento_db_data:/var/lib/mysql
           - ./infra/migrations/pagamento:/docker-entrypoint-initdb.d
         healthcheck:
-          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${PAGAMENTO_DB_PASSWORD}"]
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${PAGAMENTO_DB_PASSWORD}"]
           interval: 5s
           timeout: 5s
           retries: 10
@@ -97,7 +97,7 @@ services:
           - notificacao_db_data:/var/lib/mysql
           - ./infra/migrations/notificacao:/docker-entrypoint-initdb.d
         healthcheck:
-          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "root", "-p${NOTIFICACAO_DB_PASSWORD}"]
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${NOTIFICACAO_DB_PASSWORD}"]
           interval: 5s
           timeout: 5s
           retries: 10
@@ -124,6 +124,6 @@ services:
       ports:
         - "8080:80"
       volumes:
-        - ./infra/nginx/nginx.conf:/etc/nginx/nginc.conf:ro
+        - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       networks:
         - backend
