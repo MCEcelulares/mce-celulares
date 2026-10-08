@@ -1,5 +1,5 @@
 import { DataTypes, Model, Optional } from "sequelize";
-import { sequelize } from "../src/config/database";
+import { sequelize } from "../config/database";
 
 interface CargoPermissaoAttributes {
     id_cargo: number;

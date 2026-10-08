@@ -1,5 +1,5 @@
-import { DataTypes, Model, Optional } from "sequelize";
-import { sequelize } from "../src/config/database";
+import { BelongsToManyAddAssociationMixin, DataTypes, Model, Optional } from "sequelize";
+import { sequelize } from "../config/database";
 import { Cargo } from "./Cargo";
 
 interface UsuarioAttributes {
@@ -78,6 +78,7 @@ Usuario.init(
         googleId: {
             type: DataTypes.STRING,
             allowNull: true,
+            field: "google_id",
             defaultValue: false
         },
         email_verificado: {
