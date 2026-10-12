@@ -16,15 +16,26 @@ Object.defineProperty(exports, "Endereco", { enumerable: true, get: function () 
 Cargo_1.Cargo.belongsToMany(Permissao_1.Permissao, {
     through: CargoPermissao_1.CargoPermissao,
     foreignKey: "id_cargo",
+    otherKey: "id_permissao",
+    as: { singular: "permissao", plural: "permissoes" },
 });
 Permissao_1.Permissao.belongsToMany(Cargo_1.Cargo, {
     through: CargoPermissao_1.CargoPermissao,
     foreignKey: "id_permissao",
+    otherKey: "id_cargo",
+    as: { singular: "cargo", plural: "cargos" },
 });
 Usuario_1.Usuario.belongsToMany(Cargo_1.Cargo, {
     through: UsuarioCargo_1.UsuarioCargo,
     foreignKey: "id_usuario",
+    otherKey: "id_cargo",
+    as: { singular: "cargo", plural: "cargos" },
 });
-Cargo_1.Cargo.belongsToMany(Usuario_1.Usuario, { through: UsuarioCargo_1.UsuarioCargo, foreignKey: "id_cargo" });
+Cargo_1.Cargo.belongsToMany(Usuario_1.Usuario, {
+    through: UsuarioCargo_1.UsuarioCargo,
+    foreignKey: "id_cargo",
+    otherKey: "id_usuario",
+    as: { singular: "usuario", plural: "usuarios" },
+});
 Usuario_1.Usuario.hasMany(Endereco_1.Endereco, { foreignKey: "id_usuario" });
 Endereco_1.Endereco.belongsTo(Usuario_1.Usuario, { foreignKey: "id_usuario" });

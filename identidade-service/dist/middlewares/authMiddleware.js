@@ -9,7 +9,12 @@ function autenticar(req, res, next) {
     }
     const token = header.slice('Bearer '.length);
     try {
-        req.usuarioAutenticado = (0, jwt_1.validarToken)(token);
+        const payload = (0, jwt_1.validarToken)(token);
+        req.usuarioAutenticado = {
+            ...payload,
+            cargos: payload.cargos ?? [],
+            permissoes: payload.permissoes ?? [],
+        };
         next();
     }
     catch {

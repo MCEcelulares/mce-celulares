@@ -13,7 +13,12 @@ export function autenticar(req: AuthRequest, res: Response, next: NextFunction) 
 
   const token = header.slice('Bearer '.length);
   try {
-    req.usuarioAutenticado = validarToken(token);
+    const payload = validarToken(token);
+    req.usuarioAutenticado = {
+      ...payload,
+      cargos: payload.cargos ?? [],
+      permissoes: payload.permissoes ?? [],
+    };
     next();
   } catch {
     return res.status(401).json({ erro: 'Token inválido ou expirado' });

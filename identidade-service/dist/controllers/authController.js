@@ -35,11 +35,13 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.login = login;
 exports.loginGoogle = loginGoogle;
+exports.renovar = renovar;
+exports.logout = logout;
+exports.logoutTodos = logoutTodos;
 const authService = __importStar(require("../services/authService"));
 async function login(req, res, next) {
     try {
-        const resultado = await authService.login(req.body);
-        res.status(200).json(resultado);
+        res.status(200).json(await authService.login(req.body));
     }
     catch (err) {
         next(err);
@@ -47,8 +49,33 @@ async function login(req, res, next) {
 }
 async function loginGoogle(req, res, next) {
     try {
-        const resultado = await authService.loginGoogle(req.body.idToken);
-        res.status(200).json(resultado);
+        res.status(200).json(await authService.loginGoogle(req.body.idToken));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function renovar(req, res, next) {
+    try {
+        res.status(200).json(await authService.renovarSessao(req.body.refreshToken));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function logout(req, res, next) {
+    try {
+        await authService.encerrarSessao(req.body.refreshToken);
+        res.status(204).send();
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function logoutTodos(req, res, next) {
+    try {
+        await authService.encerrarTodasAsSessoes(req.usuarioAutenticado.id_usuario);
+        res.status(204).send();
     }
     catch (err) {
         next(err);

@@ -12,52 +12,19 @@ Usuario.init({
         primaryKey: true,
         autoIncrement: true,
     },
-    nome: {
-        type: sequelize_1.DataTypes.STRING,
-        allowNull: false,
-    },
-    email: {
-        type: sequelize_1.DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    senha: {
-        type: sequelize_1.DataTypes.STRING,
-        allowNull: true,
-    },
-    cpf: {
-        type: sequelize_1.DataTypes.STRING,
-        allowNull: true,
-    },
-    telefone: {
-        type: sequelize_1.DataTypes.STRING,
-        allowNull: true,
-    },
-    ativo: {
-        type: sequelize_1.DataTypes.BOOLEAN,
-        defaultValue: true,
-    },
-    admin: {
-        type: sequelize_1.DataTypes.BOOLEAN,
-        defaultValue: false,
-    },
-    provedor: {
-        type: sequelize_1.DataTypes.STRING,
-        defaultValue: "local",
-    },
+    nome: { type: sequelize_1.DataTypes.STRING, allowNull: false },
+    email: { type: sequelize_1.DataTypes.STRING, allowNull: false, unique: true },
+    senha: { type: sequelize_1.DataTypes.STRING, allowNull: true },
+    cpf: { type: sequelize_1.DataTypes.STRING, allowNull: true },
+    telefone: { type: sequelize_1.DataTypes.STRING, allowNull: true },
+    ativo: { type: sequelize_1.DataTypes.BOOLEAN, defaultValue: true },
+    admin: { type: sequelize_1.DataTypes.BOOLEAN, defaultValue: false },
+    provedor: { type: sequelize_1.DataTypes.STRING(20), defaultValue: "local" },
     googleId: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: true,
+        unique: true,
         field: "google_id",
-        defaultValue: false
     },
-    email_verificado: {
-        type: sequelize_1.DataTypes.BOOLEAN,
-        defaultValue: false,
-    },
-}, {
-    sequelize: database_1.sequelize,
-    modelName: "Usuario",
-    tableName: "usuario",
-    timestamps: false,
-});
+    email_verificado: { type: sequelize_1.DataTypes.BOOLEAN, defaultValue: false },
+}, { sequelize: database_1.sequelize, modelName: "Usuario", tableName: "usuario", timestamps: false });

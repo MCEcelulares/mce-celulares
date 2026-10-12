@@ -7,19 +7,6 @@ class Cargo extends sequelize_1.Model {
 }
 exports.Cargo = Cargo;
 Cargo.init({
-    id_cargo: {
-        type: sequelize_1.DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-    },
-    nome: {
-        type: sequelize_1.DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-}, {
-    sequelize: database_1.sequelize,
-    modelName: "Cargo",
-    tableName: "cargo",
-    timestamps: false,
-});
+    id_cargo: { type: sequelize_1.DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    nome: { type: sequelize_1.DataTypes.STRING(50), allowNull: false, unique: true },
+}, { sequelize: database_1.sequelize, modelName: 'Cargo', tableName: 'cargo', timestamps: false });

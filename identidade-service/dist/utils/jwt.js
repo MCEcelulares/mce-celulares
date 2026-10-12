@@ -8,12 +8,12 @@ exports.validarToken = validarToken;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const crypto_1 = __importDefault(require("crypto"));
 require("dotenv/config");
-const privateKey = (process.env.JWT_PRIVATE_KEY ?? '').trim();
+const privateKey = (process.env.JWT_PRIVATE_KEY ?? '').replace(/\\n/g, '\n').trim();
 const publicKey = crypto_1.default.createPublicKey(privateKey).export({ type: 'spki', format: 'pem' });
 function assinarToken(payload) {
     const options = {
         algorithm: 'RS256',
-        expiresIn: (process.env.JWT_EXPIRES_IN ?? '1d'),
+        expiresIn: (process.env.JWT_EXPIRES_IN ?? '1h'),
     };
     return jsonwebtoken_1.default.sign(payload, privateKey, options);
 }

@@ -35,9 +35,14 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authController = __importStar(require("../controllers/authController"));
+const authMiddleware_1 = require("../middlewares/authMiddleware");
 const validate_1 = require("../middlewares/validate");
+const rateLimit_1 = require("../utils/rateLimit");
 const authValidators_1 = require("../validators/authValidators");
 const router = (0, express_1.Router)();
-router.post('/login', (0, validate_1.validar)(authValidators_1.loginSchema), authController.login);
-router.post('/google', (0, validate_1.validar)(authValidators_1.loginGoogleSchema), authController.loginGoogle);
+router.post("/login", rateLimit_1.limitarLogin, (0, validate_1.validar)(authValidators_1.loginSchema), authController.login);
+router.post("/google", rateLimit_1.limitarLogin, (0, validate_1.validar)(authValidators_1.loginGoogleSchema), authController.loginGoogle);
+router.post("/refresh", rateLimit_1.limitarLogin, (0, validate_1.validar)(authValidators_1.refreshSchema), authController.renovar);
+router.post("/logout", (0, validate_1.validar)(authValidators_1.refreshSchema), authController.logout);
+router.post("/logout-todos", authMiddleware_1.autenticar, authController.logoutTodos);
 exports.default = router;

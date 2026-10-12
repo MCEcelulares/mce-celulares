@@ -34,12 +34,27 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.criar = criar;
+exports.listar = listar;
 exports.buscarPorId = buscarPorId;
+exports.me = me;
+exports.atualizarPerfil = atualizarPerfil;
+exports.atualizarComoAdmin = atualizarComoAdmin;
+exports.alterarStatus = alterarStatus;
+exports.excluir = excluir;
+exports.alterarSenha = alterarSenha;
+exports.definirCargos = definirCargos;
 const usuarioService = __importStar(require("../services/usuarioService"));
 async function criar(req, res, next) {
     try {
-        const usuario = await usuarioService.criarUsuario(req.body);
-        res.status(201).json(usuario);
+        res.status(201).json(await usuarioService.criarUsuario(req.body));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function listar(req, res, next) {
+    try {
+        res.status(200).json(await usuarioService.listarUsuarios(req.query));
     }
     catch (err) {
         next(err);
@@ -47,8 +62,68 @@ async function criar(req, res, next) {
 }
 async function buscarPorId(req, res, next) {
     try {
-        const usuario = await usuarioService.buscarUsuarioPorId(Number(req.params.id));
+        res.status(200).json(await usuarioService.buscarUsuarioPorId(Number(req.params.id)));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function me(req, res, next) {
+    try {
+        res.status(200).json(await usuarioService.buscarUsuarioPorId(req.usuarioAutenticado.id_usuario));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function atualizarPerfil(req, res, next) {
+    try {
+        res.status(200).json(await usuarioService.atualizarPerfil(req.usuarioAutenticado.id_usuario, req.body));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function atualizarComoAdmin(req, res, next) {
+    try {
+        const usuario = await usuarioService.atualizarUsuarioComoAdmin(Number(req.params.id), req.body, req.usuarioAutenticado.id_usuario);
         res.status(200).json(usuario);
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function alterarStatus(req, res, next) {
+    try {
+        const usuario = await usuarioService.alterarStatus(Number(req.params.id), req.body.ativo, req.usuarioAutenticado.id_usuario);
+        res.status(200).json(usuario);
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function excluir(req, res, next) {
+    try {
+        await usuarioService.excluirUsuario(Number(req.params.id), req.usuarioAutenticado.id_usuario);
+        res.status(204).send();
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function alterarSenha(req, res, next) {
+    try {
+        await usuarioService.alterarSenha(req.usuarioAutenticado.id_usuario, req.body);
+        res.status(204).send();
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function definirCargos(req, res, next) {
+    try {
+        const perfil = await usuarioService.definirCargos(Number(req.params.id), req.body.cargos, req.usuarioAutenticado.id_usuario);
+        res.status(200).json(perfil);
     }
     catch (err) {
         next(err);

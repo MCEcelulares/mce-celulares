@@ -34,13 +34,24 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listar = listar;
+exports.buscar = buscar;
 exports.criar = criar;
+exports.atualizar = atualizar;
 exports.marcarPrincipal = marcarPrincipal;
+exports.remover = remover;
 const enderecoService = __importStar(require("../services/enderecoService"));
 async function listar(req, res, next) {
     try {
-        const enderecos = await enderecoService.listarEnderecos(Number(req.params.id));
-        res.status(200).json(enderecos);
+        res.status(200).json(await enderecoService.listarEnderecos(Number(req.params.id)));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function buscar(req, res, next) {
+    try {
+        const endereco = await enderecoService.buscarEndereco(Number(req.params.id), Number(req.params.idEndereco));
+        res.status(200).json(endereco);
     }
     catch (err) {
         next(err);
@@ -48,8 +59,16 @@ async function listar(req, res, next) {
 }
 async function criar(req, res, next) {
     try {
-        const endereco = await enderecoService.criarEndereco(Number(req.params.id), req.body);
-        res.status(201).json(endereco);
+        res.status(201).json(await enderecoService.criarEndereco(Number(req.params.id), req.body));
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function atualizar(req, res, next) {
+    try {
+        const endereco = await enderecoService.atualizarEndereco(Number(req.params.id), Number(req.params.idEndereco), req.body);
+        res.status(200).json(endereco);
     }
     catch (err) {
         next(err);
@@ -59,6 +78,15 @@ async function marcarPrincipal(req, res, next) {
     try {
         const endereco = await enderecoService.marcarEnderecoPrincipal(Number(req.params.id), Number(req.params.idEndereco));
         res.status(200).json(endereco);
+    }
+    catch (err) {
+        next(err);
+    }
+}
+async function remover(req, res, next) {
+    try {
+        await enderecoService.removerEndereco(Number(req.params.id), Number(req.params.idEndereco));
+        res.status(204).send();
     }
     catch (err) {
         next(err);
