@@ -17,9 +17,10 @@ services:
         environment:
             MYSQL_DATABASE: ${IDENTIDADE_DB_NAME}
             MYSQL_ROOT_PASSWORD: ${IDENTIDADE_DB_PASSWORD}
+        ports:
+          - "127.0.0.1:3307:3306"
         volumes:
           - identidade_db_data:/var/lib/mysql
-          - ./infra/migrations/identidade:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${IDENTIDADE_DB_PASSWORD}"]
           interval: 5s
@@ -109,6 +110,8 @@ services:
       image: redis:7-alpine
       container_name: redis
       restart: unless-stopped
+      ports:
+        - "127.0.0.1:6379:6379"
       healthcheck:
         test: ["CMD", "redis-cli", "ping"]
         interval: 5s
@@ -116,6 +119,26 @@ services:
         retries: 10
       networks:
         - backend
+
+    identidade:
+        build:
+            context: ./identidade-service
+        container_name: identidade
+        restart: unless-stopped
+        env_file: ./identidade-service/.env
+        environment:
+            DB_HOST: identidade_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+            RUN_SEEDS: "true"
+        depends_on:
+            identidade_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
 
     nginx:
       image: nginx:alpine

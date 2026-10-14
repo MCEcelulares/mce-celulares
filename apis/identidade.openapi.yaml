@@ -1,56 +1,38 @@
 openapi: 3.0.3
 info:
   title: Serviço Identidade — MCEcelulares
-  version: "1.0.0"
-  description: Cadastro/autenticação de usuários, endereços e cargos/permissões.
+  version: "2.0.0"
+  description: >-
+    Usuários, autenticação (JWT RS256 + refresh token), endereços e RBAC
+    (cargos e permissões). As permissões do usuário vão dentro do JWT (ADR-006)
+    e a sessão renovável usa refresh token opaco guardado no Redis (ADR-007).
   license:
     name: UNLICENSED
 servers:
   - url: /identidade
 security:
   - bearerAuth: []
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+tags:
+  - name: Auth
+    description: Login, renovação de sessão e logout
+  - name: Usuários
+    description: Cadastro, perfil, gestão de contas e atribuição de cargos
+  - name: Endereços
+    description: Endereços de entrega do usuário
+  - name: Cargos
+    description: Administração de cargos e das permissões de cada cargo
+  - name: Permissões
+    description: Catálogo de permissões do sistema
+  - name: Operação
+    description: Health checks e métricas
+
 paths:
-  /usuarios:
-    post:
-      operationId: criarUsuario
-      summary: Cria um novo usuário (cadastro local)
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [nome, email, senha]
-              properties:
-                nome: { type: string }
-                email: { type: string, format: email }
-                senha: { type: string, format: password }
-      responses:
-        "201": { description: Usuário criado }
-        "409": { description: E-mail já cadastrado }
-  /usuarios/{id}:
-    get:
-      operationId: buscarUsuarioPorId
-      summary: Busca um usuário por id (usado internamente pelo serviço Vendas)
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        "200": { description: Usuário encontrado }
-        "404": { description: Usuário não existe }
   /auth/login:
     post:
+      tags: [Auth]
       operationId: login
       summary: Login local (e-mail e senha)
+      description: Limitado a 10 tentativas por IP a cada 15 minutos (429 depois disso).
       security: []
       requestBody:
         required: true
@@ -60,55 +42,912 @@ paths:
               type: object
               required: [email, senha]
               properties:
-                email: { type: string }
+                email: { type: string, format: email }
                 senha: { type: string }
       responses:
-        "200": { description: "Login bem-sucedido, retorna token" }
-        "401": { description: Credenciais inválidas }
+        "200":
+          description: Login realizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sessao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Conta inativa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "429": { $ref: "#/components/responses/MuitasTentativas" }
+
   /auth/google:
     post:
+      tags: [Auth]
       operationId: loginGoogle
-      summary: Login/cadastro via Google OAuth
+      summary: Login ou cadastro via Google
+      description: >-
+        Recebe o idToken do Google. Se já existir conta local com o mesmo e-mail
+        (verificado pelo Google), o Google é vinculado a ela.
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
       responses:
-        "200": { description: Login bem-sucedido }
-        "401": { description: Token do Google inválido }
-  /usuarios/{id}/enderecos:
-    get:
-      operationId: listarEnderecos
-      summary: Lista endereços cadastrados do usuário
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        "200": { description: Lista de endereços }
-        "404": { description: Usuário não existe }
+        "200":
+          description: Login realizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sessao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "429": { $ref: "#/components/responses/MuitasTentativas" }
+
+  /auth/refresh:
     post:
-      operationId: criarEndereco
-      summary: Cadastra novo endereço
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+      tags: [Auth]
+      operationId: renovarSessao
+      summary: Renova a sessão com o refresh token (RF02)
+      description: >-
+        O refresh token é de uso único: o enviado é invalidado e um novo par de
+        tokens é devolvido. As permissões são recalculadas neste momento.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshEntrada" }
       responses:
-        "201": { description: Endereço criado }
-        "400": { description: Dados do endereço inválidos }
-  /usuarios/{id}/enderecos/{idEndereco}/principal:
+        "200":
+          description: Sessão renovada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sessao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "429": { $ref: "#/components/responses/MuitasTentativas" }
+        "503": { $ref: "#/components/responses/SessaoIndisponivel" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Encerra a sessão do refresh token informado (RF03)
+      description: Idempotente. Não exige o access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshEntrada" }
+      responses:
+        "204": { description: Sessão encerrada }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "503": { $ref: "#/components/responses/SessaoIndisponivel" }
+
+  /auth/logout-todos:
+    post:
+      tags: [Auth]
+      operationId: logoutTodos
+      summary: Encerra todas as sessões do usuário (todos os dispositivos)
+      responses:
+        "204": { description: Sessões encerradas }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "503": { $ref: "#/components/responses/SessaoIndisponivel" }
+
+  /usuarios:
+    post:
+      tags: [Usuários]
+      operationId: criarUsuario
+      summary: Cadastro de cliente (RF01)
+      description: Limitado a 20 cadastros por IP por hora. O novo usuário recebe o cargo "cliente".
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UsuarioEntrada" }
+      responses:
+        "201":
+          description: Usuário criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "409": { $ref: "#/components/responses/Conflito" }
+        "429": { $ref: "#/components/responses/MuitasTentativas" }
+    get:
+      tags: [Usuários]
+      operationId: listarUsuarios
+      summary: Lista usuários com paginação (RF08)
+      description: "Permissão: usuarios:listar"
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: busca, in: query, description: Procura no nome e no e-mail, schema: { type: string } }
+        - { name: cargo, in: query, description: Filtra por nome do cargo, schema: { type: string } }
+        - { name: ativo, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Página de usuários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dados:
+                    type: array
+                    items: { $ref: "#/components/schemas/UsuarioResumo" }
+                  paginacao: { $ref: "#/components/schemas/Paginacao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+
+  /usuarios/me:
+    get:
+      tags: [Usuários]
+      operationId: meuPerfil
+      summary: Dados do usuário logado, com cargos e permissões
+      responses:
+        "200":
+          description: Perfil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
     patch:
+      tags: [Usuários]
+      operationId: atualizarMeuPerfil
+      summary: Edita nome, CPF ou telefone do usuário logado (RF04)
+      description: O e-mail não é editável por aqui.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PerfilEdicao" }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+
+  /usuarios/me/senha:
+    patch:
+      tags: [Usuários]
+      operationId: alterarMinhaSenha
+      summary: Troca a senha do usuário logado
+      description: Encerra todas as sessões abertas (refresh tokens) do usuário.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [senhaAtual, novaSenha]
+              properties:
+                senhaAtual: { type: string }
+                novaSenha: { type: string, minLength: 6, maxLength: 72 }
+      responses:
+        "204": { description: Senha alterada }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+
+  /usuarios/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    get:
+      tags: [Usuários]
+      operationId: buscarUsuarioPorId
+      summary: Busca um usuário (RF09)
+      description: >-
+        Permitido ao próprio usuário ou a quem tem usuarios:ver. O serviço Vendas
+        deve repassar o token do usuário logado ao chamar este endpoint.
+      responses:
+        "200":
+          description: Usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    patch:
+      tags: [Usuários]
+      operationId: atualizarUsuario
+      summary: Administrador edita dados de outro usuário (inclusive o e-mail)
+      description: "Permissão: usuarios:editar"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UsuarioEdicaoAdmin" }
+      responses:
+        "200":
+          description: Usuário atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+    delete:
+      tags: [Usuários]
+      operationId: excluirUsuario
+      summary: Exclusão lógica do usuário
+      description: >-
+        Permissão: usuarios:excluir. A conta é desativada, não apagada, para o
+        histórico de pedidos continuar íntegro. Não é possível excluir a si mesmo
+        nem o último administrador ativo.
+      responses:
+        "204": { description: Usuário excluído (desativado) }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /usuarios/{id}/status:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    patch:
+      tags: [Usuários]
+      operationId: alterarStatusUsuario
+      summary: Ativa ou desativa uma conta
+      description: >-
+        Permissão: usuarios:editar. Desativar encerra as sessões do usuário e
+        bloqueia novos logins. Mesmas travas do DELETE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ativo]
+              properties:
+                ativo: { type: boolean }
+      responses:
+        "200":
+          description: Status alterado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /usuarios/{id}/cargos:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    put:
+      tags: [Usuários]
+      operationId: definirCargosDoUsuario
+      summary: Substitui os cargos do usuário (RF05)
+      description: >-
+        Permissão: usuarios:gerenciar-cargos. Vale no próximo login/refresh do
+        usuário. Não é possível tirar o cargo do último administrador ativo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cargos]
+              properties:
+                cargos:
+                  type: array
+                  minItems: 1
+                  items: { type: string }
+      responses:
+        "200":
+          description: Cargos atualizados
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /usuarios/{id}/enderecos:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    get:
+      tags: [Endereços]
+      operationId: listarEnderecos
+      summary: Lista os endereços do usuário (principal primeiro)
+      description: O próprio usuário ou quem tem usuarios:ver.
+      responses:
+        "200":
+          description: Endereços
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Endereco" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    post:
+      tags: [Endereços]
+      operationId: criarEndereco
+      summary: Cadastra um endereço (RF38)
+      description: Só o próprio usuário. O primeiro endereço já nasce como principal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnderecoEntrada" }
+      responses:
+        "201":
+          description: Endereço criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Endereco" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+
+  /usuarios/{id}/enderecos/{idEndereco}:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+      - { $ref: "#/components/parameters/IdEndereco" }
+    get:
+      tags: [Endereços]
+      operationId: buscarEndereco
+      summary: Busca um endereço
+      responses:
+        "200":
+          description: Endereço
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Endereco" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    patch:
+      tags: [Endereços]
+      operationId: atualizarEndereco
+      summary: Edita um endereço (RF39)
+      description: Só o próprio usuário. Não é possível desmarcar o principal sem marcar outro.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnderecoEdicao" }
+      responses:
+        "200":
+          description: Endereço atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Endereco" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    delete:
+      tags: [Endereços]
+      operationId: removerEndereco
+      summary: Remove um endereço (RF39)
+      description: Se era o principal, o mais antigo que sobrar vira o principal.
+      responses:
+        "204": { description: Endereço removido }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+
+  /usuarios/{id}/enderecos/{idEndereco}/principal:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+      - { $ref: "#/components/parameters/IdEndereco" }
+    patch:
+      tags: [Endereços]
       operationId: marcarEnderecoPrincipal
       summary: Marca um endereço como principal
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-        - in: path
-          name: idEndereco
-          required: true
-          schema: { type: integer }
       responses:
-        "200": { description: Endereço marcado como principal }
-        "404": { description: Endereço não encontrado para esse usuário }
+        "200":
+          description: Endereço marcado como principal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Endereco" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+
+  /cargos:
+    get:
+      tags: [Cargos]
+      operationId: listarCargos
+      summary: Lista cargos com suas permissões
+      description: "Permissão: cargos:gerenciar ou usuarios:gerenciar-cargos"
+      responses:
+        "200":
+          description: Cargos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Cargo" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+    post:
+      tags: [Cargos]
+      operationId: criarCargo
+      summary: Cria um cargo
+      description: "Permissão: cargos:gerenciar. Nome em minúsculas (letras, números, - e _)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string, example: gerente }
+                permissoes:
+                  type: array
+                  items: { type: string }
+      responses:
+        "201":
+          description: Cargo criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cargo" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /cargos/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    get:
+      tags: [Cargos]
+      operationId: buscarCargo
+      summary: Busca um cargo
+      responses:
+        "200":
+          description: Cargo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cargo" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    patch:
+      tags: [Cargos]
+      operationId: renomearCargo
+      summary: Renomeia um cargo
+      description: "Permissão: cargos:gerenciar. Os cargos do sistema (cliente e administrador) não podem ser renomeados."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string }
+      responses:
+        "200":
+          description: Cargo renomeado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cargo" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+    delete:
+      tags: [Cargos]
+      operationId: excluirCargo
+      summary: Exclui um cargo
+      description: "Permissão: cargos:gerenciar. Não exclui cargos do sistema nem cargos atribuídos a algum usuário."
+      responses:
+        "204": { description: Cargo excluído }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /cargos/{id}/permissoes:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    put:
+      tags: [Cargos]
+      operationId: definirPermissoesDoCargo
+      summary: Substitui as permissões do cargo (RF06)
+      description: "Permissão: cargos:gerenciar. Lista vazia remove todas. O cargo administrador não pode ser alterado."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permissoes]
+              properties:
+                permissoes:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Permissões atualizadas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cargo" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /permissoes:
+    get:
+      tags: [Permissões]
+      operationId: listarPermissoes
+      summary: Lista as permissões
+      description: "Permissão: cargos:gerenciar"
+      responses:
+        "200":
+          description: Permissões
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Permissao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+    post:
+      tags: [Permissões]
+      operationId: criarPermissao
+      summary: Cria uma permissão (formato recurso:acao)
+      description: O cargo administrador recebe a permissão automaticamente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string, example: "relatorios:exportar" }
+      responses:
+        "201":
+          description: Permissão criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Permissao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /permissoes/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/Id" }
+    get:
+      tags: [Permissões]
+      operationId: buscarPermissao
+      summary: Busca uma permissão
+      responses:
+        "200":
+          description: Permissão
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Permissao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    patch:
+      tags: [Permissões]
+      operationId: renomearPermissao
+      summary: Renomeia uma permissão personalizada
+      description: Permissões do sistema e permissões em uso por outro cargo não podem ser renomeadas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string }
+      responses:
+        "200":
+          description: Permissão renomeada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Permissao" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+    delete:
+      tags: [Permissões]
+      operationId: excluirPermissao
+      summary: Exclui uma permissão personalizada
+      description: Mesmas travas do PATCH.
+      responses:
+        "204": { description: Permissão excluída }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/Conflito" }
+
+  /health/live:
+    get:
+      tags: [Operação]
+      operationId: healthLive
+      summary: Liveness — o processo está vivo
+      security: []
+      responses:
+        "200":
+          description: Vivo
+        "500":
+          description: Processo com falha
+
+  /health:
+    get:
+      tags: [Operação]
+      operationId: healthReady
+      summary: Readiness — banco e Redis
+      description: >-
+        200 com status "ok" ou "degradado" (Redis fora: o login funciona, só sem
+        refresh token). 503 quando o banco está indisponível.
+      security: []
+      responses:
+        "200":
+          description: Pronto (ok ou degradado)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, degradado] }
+                  banco: { type: string }
+                  redis: { type: string }
+        "503":
+          description: Banco indisponível
+
+  /metrics:
+    get:
+      tags: [Operação]
+      operationId: metricas
+      summary: Métricas no formato Prometheus
+      description: >-
+        Responde 404 se METRICS_TOKEN não estiver configurado. Exige
+        "Authorization: Bearer METRICS_TOKEN" (diferente do JWT de usuário).
+      security:
+        - metricsToken: []
+      responses:
+        "200":
+          description: Métricas
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          description: Token de métricas ausente ou inválido
+        "404":
+          description: Métricas desabilitadas
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    metricsToken:
+      type: http
+      scheme: bearer
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    IdEndereco:
+      name: idEndereco
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    DadosInvalidos:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado (ou credenciais incorretas)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    SemPermissao:
+      description: Sem permissão para esta ação
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    NaoEncontrado:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    Conflito:
+      description: Conflito com o estado atual (duplicado, em uso ou protegido pelo sistema)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    MuitasTentativas:
+      description: Limite de requisições excedido (veja o cabeçalho Retry-After)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    SessaoIndisponivel:
+      description: Redis indisponível — tente novamente
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+
+  schemas:
+    Erro:
+      type: object
+      properties:
+        erro: { type: string }
+        detalhes: { type: object }
+    Paginacao:
+      type: object
+      properties:
+        pagina: { type: integer }
+        limite: { type: integer }
+        total: { type: integer }
+        totalPaginas: { type: integer }
+    UsuarioEntrada:
+      type: object
+      required: [nome, email, senha, cpf, telefone]
+      properties:
+        nome: { type: string, minLength: 2 }
+        email: { type: string, format: email }
+        senha: { type: string, minLength: 6, maxLength: 72 }
+        cpf: { type: string, example: "529.982.247-25" }
+        telefone: { type: string, example: "(44) 99999-8888" }
+    PerfilEdicao:
+      type: object
+      properties:
+        nome: { type: string }
+        cpf: { type: string }
+        telefone: { type: string }
+    UsuarioEdicaoAdmin:
+      type: object
+      properties:
+        nome: { type: string }
+        email: { type: string, format: email }
+        cpf: { type: string }
+        telefone: { type: string }
+    UsuarioResumo:
+      type: object
+      properties:
+        id_usuario: { type: integer }
+        nome: { type: string }
+        email: { type: string }
+        cpf: { type: string, nullable: true }
+        telefone: { type: string, nullable: true }
+        ativo: { type: boolean }
+        provedor: { type: string }
+        email_verificado: { type: boolean }
+        cargos:
+          type: array
+          items:
+            type: object
+            properties:
+              id_cargo: { type: integer }
+              nome: { type: string }
+    Perfil:
+      type: object
+      description: Dados do usuário (nunca inclui a senha) mais cargos e permissões efetivas.
+      properties:
+        id_usuario: { type: integer }
+        nome: { type: string }
+        email: { type: string }
+        cpf: { type: string, nullable: true }
+        telefone: { type: string, nullable: true }
+        ativo: { type: boolean }
+        admin: { type: boolean }
+        provedor: { type: string }
+        email_verificado: { type: boolean }
+        cargos:
+          type: array
+          items: { type: string }
+        permissoes:
+          type: array
+          items: { type: string }
+    Sessao:
+      type: object
+      properties:
+        tipo: { type: string, example: Bearer }
+        token: { type: string, description: Access token JWT RS256 com cargos e permissoes no payload }
+        expiraEm: { type: integer, description: Segundos de vida do access token }
+        refreshToken:
+          type: string
+          nullable: true
+          description: Opaco e de uso único. Nulo se o Redis estiver indisponível.
+        usuario: { $ref: "#/components/schemas/Perfil" }
+    RefreshEntrada:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    Endereco:
+      type: object
+      properties:
+        id_endereco: { type: integer }
+        id_usuario: { type: integer }
+        endereco: { type: string }
+        numero: { type: string }
+        complemento: { type: string, nullable: true }
+        bairro: { type: string, nullable: true }
+        cidade: { type: string }
+        estado: { type: string, example: PR }
+        cep: { type: string, example: "85420000" }
+        principal: { type: boolean }
+    EnderecoEntrada:
+      type: object
+      required: [endereco, numero, cidade, estado, cep]
+      properties:
+        endereco: { type: string }
+        numero: { type: string }
+        complemento: { type: string }
+        bairro: { type: string }
+        cidade: { type: string }
+        estado: { type: string, minLength: 2, maxLength: 2 }
+        cep: { type: string, example: "85420-000" }
+        principal: { type: boolean }
+    EnderecoEdicao:
+      type: object
+      properties:
+        endereco: { type: string }
+        numero: { type: string }
+        complemento: { type: string }
+        bairro: { type: string }
+        cidade: { type: string }
+        estado: { type: string }
+        cep: { type: string }
+        principal: { type: boolean }
+    Cargo:
+      type: object
+      properties:
+        id_cargo: { type: integer }
+        nome: { type: string }
+        protegido: { type: boolean, description: Cargos do sistema não podem ser renomeados nem excluídos }
+        permissoes:
+          type: array
+          items: { type: string }
+    Permissao:
+      type: object
+      properties:
+        id_permissao: { type: integer }
+        nome: { type: string }
+        do_sistema: { type: boolean }
