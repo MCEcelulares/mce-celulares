@@ -140,6 +140,25 @@ services:
         networks:
           - backend
 
+    notificacao:
+        build:
+            context: ./notificacao-service
+        container_name: notificacao
+        restart: unless-stopped
+        env_file: ./notificacao-service/.env
+        environment:
+            DB_HOST: notificacao_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            notificacao_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
     nginx:
       image: nginx:alpine
       container_name: nginx
