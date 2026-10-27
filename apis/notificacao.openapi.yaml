@@ -1,25 +1,33 @@
 openapi: 3.0.3
 info:
   title: Serviço Notificação — MCEcelulares
-  version: "1.0.0"
-  description: Envio de e-mails transacionais (assina eventos) e formulário de contato.
+  version: "1.1.0"
+  description: >-
+    Envio de e-mails transacionais (assina eventos no Redis Pub/Sub, contrato no
+    ADR-008) e formulário de contato.
   license:
     name: UNLICENSED
 servers:
   - url: /notificacao
 security:
   - bearerAuth: []
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+tags:
+  - name: Contato
+    description: Formulário de contato do site
+  - name: Logs
+    description: Histórico de notificações enviadas (suporte)
+  - name: Operação
+    description: Health checks e métricas
+
 paths:
   /contato:
     post:
+      tags: [Contato]
       operationId: enviarContato
       summary: Recebe mensagem do formulário de contato e envia direto por e-mail (não persiste)
+      description: >-
+        Público. Limitado a 5 mensagens por IP por hora (429 depois disso). O
+        e-mail vai para EMAIL_CONTATO_LOJA, com o e-mail informado em Reply-To.
       security: []
       requestBody:
         required: true
@@ -29,26 +37,171 @@ paths:
               type: object
               required: [nome, email, mensagem]
               properties:
-                nome: { type: string }
-                assunto: { type: string }
-                telefone: { type: string }
-                email: { type: string }
-                mensagem: { type: string }
+                nome: { type: string, minLength: 2, maxLength: 100 }
+                email: { type: string, format: email, maxLength: 255 }
+                assunto: { type: string, maxLength: 150 }
+                telefone: { type: string, maxLength: 20 }
+                mensagem: { type: string, minLength: 5, maxLength: 2000 }
       responses:
-        "202": { description: Mensagem recebida e enviada por e-mail }
-        "400": { description: Dados do formulário inválidos }
+        "202":
+          description: Mensagem recebida e enviada por e-mail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "429":
+          description: Muitas mensagens a partir deste IP
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "502":
+          description: Falha ao enviar o e-mail (SMTP)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503":
+          description: Envio de contato não configurado (EMAIL_CONTATO_LOJA ausente)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /logs/{idPedido}:
     get:
+      tags: [Logs]
       operationId: listarNotificacoesPorPedido
       summary: Consulta o histórico de notificações enviadas para um pedido (debug/suporte)
+      description: Exige a permissão "pedidos:listar-todos" (RBAC do Identidade, ADR-006).
       parameters:
         - in: path
           name: idPedido
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       responses:
-        "200": { description: Lista de notificações enviadas (notificacao_log) }
-        "404": { description: Nenhuma notificação para esse pedido }
+        "200":
+          description: Lista de notificações enviadas (notificacao_log)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NotificacaoLog" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401":
+          description: Token ausente, inválido ou expirado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "403":
+          description: Sem a permissão pedidos:listar-todos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Nenhuma notificação para esse pedido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /health/live:
+    get:
+      tags: [Operação]
+      operationId: healthLive
+      summary: Liveness — o processo está vivo
+      security: []
+      responses:
+        "200":
+          description: Vivo
+
+  /health:
+    get:
+      tags: [Operação]
+      operationId: healthReady
+      summary: Readiness — banco e Redis
+      description: >-
+        200 com status "ok" ou "degradado" (Redis fora: o formulário de contato
+        funciona, mas os eventos não são consumidos). 503 quando o banco está
+        indisponível.
+      security: []
+      responses:
+        "200":
+          description: Pronto (ok ou degradado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Banco indisponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /metrics:
+    get:
+      tags: [Operação]
+      operationId: metricas
+      summary: Métricas no formato Prometheus
+      description: >-
+        Responde 404 se METRICS_TOKEN não estiver configurado. Exige
+        "Authorization: Bearer METRICS_TOKEN" (diferente do JWT de usuário).
+        Inclui notificacao_entrega_segundos, usada no SLO 4 (p95 < 10s).
+      security:
+        - metricsToken: []
+      responses:
+        "200":
+          description: Métricas
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          description: Token de métricas ausente ou inválido
+        "404":
+          description: Métricas desabilitadas
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: Valor de METRICS_TOKEN (não é um JWT)
+  responses:
+    DadosInvalidos:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+  schemas:
+    Erro:
+      type: object
+      properties:
+        erro: { type: string }
+        detalhes: { type: object }
+    NotificacaoLog:
+      type: object
+      properties:
+        id_notificacao: { type: integer }
+        id_pedido: { type: integer }
+        tipo:
+          type: string
+          enum: [PEDIDO_CRIADO, PAGAMENTO_CONFIRMADO]
+        destinatario: { type: string }
+        status:
+          type: string
+          enum: [PENDENTE, ENVIADO, FALHA]
+        erro: { type: string, nullable: true }
+        enviado_em: { type: string, format: date-time, nullable: true }
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degradado, indisponivel] }
+        servico: { type: string }
+        banco: { type: string, enum: [ok, falha] }
+        redis: { type: string, enum: [ok, falha] }
+
 # Este serviço não expõe endpoints de escrita para os eventos —
 # eles chegam via Redis Pub/Sub (canais pedido.criado e pagamento.confirmado),
-# não via HTTP.
+# não via HTTP. O formato das mensagens está no ADR-008.

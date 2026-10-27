@@ -6,7 +6,7 @@ jest.mock('../src/config/database', () => ({
 }));
 
 jest.mock('../src/models', () => ({
-  NotificacaoLog: { create: jest.fn(), findAll: jest.fn() },
+  NotificacaoLog: { create: jest.fn(), findAll: jest.fn(), findOne: jest.fn() },
 }));
 
 jest.mock('../src/services/emailService', () => ({

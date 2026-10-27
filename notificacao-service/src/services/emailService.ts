@@ -21,12 +21,27 @@ export interface Email {
   responderPara?: string;
 }
 
-export async function enviarEmail({ para, assunto, texto, responderPara }: Email): Promise<void> {
-  await transporte.sendMail({
-    from: process.env.EMAIL_REMETENTE ?? 'MCE Celulares <nao-responda@mce.local>',
-    to: para,
-    subject: assunto,
-    text: texto,
-    replyTo: responderPara,
+const pausa = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Provedores de SMTP limitam envios por segundo (ex.: Mailtrap grátis responde 550).
+// Os envios saem um por vez, com EMAIL_INTERVALO_MS de pausa entre eles.
+let fila: Promise<unknown> = Promise.resolve();
+
+export function enviarEmail({ para, assunto, texto, responderPara }: Email): Promise<void> {
+  const execucao = fila.then(async () => {
+    try {
+      await transporte.sendMail({
+        from: process.env.EMAIL_REMETENTE ?? 'MCE Celulares <nao-responda@mce.local>',
+        to: para,
+        subject: assunto,
+        text: texto,
+        replyTo: responderPara,
+      });
+    } finally {
+      const intervalo = Number(process.env.EMAIL_INTERVALO_MS ?? 0);
+      if (intervalo > 0) await pausa(intervalo);
+    }
   });
+  fila = execucao.catch(() => undefined);
+  return execucao;
 }

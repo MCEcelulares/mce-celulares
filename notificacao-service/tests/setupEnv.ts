@@ -13,3 +13,4 @@ process.env.LOG_LEVEL = 'silent';
 process.env.RATE_LIMIT_DESLIGADO = 'true';
 process.env.METRICS_TOKEN = 'token-de-teste';
 process.env.EMAIL_CONTATO_LOJA = 'loja@mce.test';
+process.env.EMAIL_RETRY_MS = '0';

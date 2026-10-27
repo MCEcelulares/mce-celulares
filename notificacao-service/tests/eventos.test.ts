@@ -3,7 +3,7 @@ import { NotificacaoLog } from '../src/models';
 import { enviarEmail } from '../src/services/emailService';
 import { tratarMensagem } from '../src/services/assinanteService';
 
-const logMock = NotificacaoLog as unknown as { create: jest.Mock };
+const logMock = NotificacaoLog as unknown as { create: jest.Mock; findOne: jest.Mock };
 const emailMock = enviarEmail as jest.Mock;
 
 const cliente = { nome: 'Fulano', email: 'fulano@mce.test' };
@@ -44,15 +44,33 @@ describe('pedido.criado', () => {
     expect(log.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'ENVIADO' }));
   });
 
-  it('ignora evento duplicado (UNIQUE id_pedido + tipo)', async () => {
+  it('ignora evento duplicado já enviado (UNIQUE id_pedido + tipo)', async () => {
     logMock.create.mockRejectedValueOnce(new UniqueConstraintError({}));
+    logMock.findOne.mockResolvedValueOnce({ status: 'ENVIADO', update: jest.fn() });
     await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
     expect(emailMock).not.toHaveBeenCalled();
   });
 
-  it('marca como FALHA quando o envio do e-mail falha', async () => {
-    emailMock.mockRejectedValueOnce(new Error('smtp fora do ar'));
+  it('reenvia quando o evento é republicado e a tentativa anterior terminou em FALHA', async () => {
+    const anterior = { status: 'FALHA', update: jest.fn().mockResolvedValue(undefined) };
+    logMock.create.mockRejectedValueOnce(new UniqueConstraintError({}));
+    logMock.findOne.mockResolvedValueOnce(anterior);
     await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+    expect(emailMock).toHaveBeenCalledTimes(1);
+    expect(anterior.update).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'ENVIADO' }));
+  });
+
+  it('tenta de novo e consegue enviar após uma falha transitória do SMTP', async () => {
+    emailMock.mockRejectedValueOnce(new Error('timeout'));
+    await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+    expect(emailMock).toHaveBeenCalledTimes(2);
+    expect(log.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'ENVIADO' }));
+  });
+
+  it('marca como FALHA depois de esgotar as 3 tentativas', async () => {
+    emailMock.mockRejectedValue(new Error('smtp fora do ar'));
+    await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+    expect(emailMock).toHaveBeenCalledTimes(3);
     expect(log.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'FALHA', erro: 'smtp fora do ar' }));
   });
 });
