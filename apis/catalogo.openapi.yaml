@@ -1,102 +1,563 @@
 openapi: 3.0.3
 info:
   title: Serviço Catálogo — MCEcelulares
-  version: "1.0.0"
-  description: Produtos, categorias, marcas, busca e filtros.
+  version: "1.1.0"
+  description: >-
+    Produtos, categorias, marcas, busca e filtros. A leitura é pública; criar e
+    editar exige a permissão "catalogo:gerenciar" (RBAC do Identidade, ADR-006).
+    O detalhe do produto usa cache-aside no Redis (chave produto:{id}) e é
+    invalidado em qualquer alteração. Produtos inativos não aparecem na leitura
+    pública; "excluir" é inativar (PATCH ativo=false).
   license:
     name: UNLICENSED
 servers:
   - url: /catalogo
 security:
   - bearerAuth: []
+tags:
+  - name: Produtos
+    description: Consulta pública e gestão de produtos
+  - name: Categorias
+    description: Categorias de produtos
+  - name: Marcas
+    description: Marcas de produtos
+  - name: Interno
+    description: Rotas chamadas só por outros serviços (token de serviço)
+  - name: Operação
+    description: Health checks e métricas
+
+paths:
+  /produtos:
+    get:
+      tags: [Produtos]
+      operationId: listarProdutos
+      summary: Lista produtos ativos com filtros, ordenação e paginação
+      description: A busca por nome usa LIKE (contém o texto, sem diferenciar maiúsculas).
+      security: []
+      parameters:
+        - in: query
+          name: categoria
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: marca
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: precoMin
+          schema: { type: number, minimum: 0 }
+        - in: query
+          name: precoMax
+          schema: { type: number, minimum: 0 }
+          description: Não pode ser menor que precoMin (400)
+        - in: query
+          name: busca
+          schema: { type: string, minLength: 1, maxLength: 100 }
+          description: Texto contido no nome do produto
+        - in: query
+          name: disponivel
+          schema: { type: boolean }
+          description: "true = só produtos com estoque maior que zero"
+        - in: query
+          name: ordenar
+          schema: { type: string, enum: [recentes, preco_asc, preco_desc], default: recentes }
+        - in: query
+          name: pagina
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limite
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Página de produtos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dados:
+                    type: array
+                    items: { $ref: "#/components/schemas/Produto" }
+                  pagina: { type: integer }
+                  limite: { type: integer }
+                  total: { type: integer, description: Total de produtos que atendem aos filtros }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+    post:
+      tags: [Produtos]
+      operationId: criarProduto
+      summary: Cadastra um produto
+      description: Exige a permissão "catalogo:gerenciar". A imagem é informada como URL/caminho (não há upload neste serviço).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProdutoEntrada" }
+      responses:
+        "201":
+          description: Produto criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Produto" }
+        "400":
+          description: Dados inválidos ou marca/categoria inexistente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+
+  /produtos/destaque:
+    get:
+      tags: [Produtos]
+      operationId: listarProdutosDestaque
+      summary: Produtos em destaque (para o carrossel da home)
+      security: []
+      parameters:
+        - in: query
+          name: limite
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Produtos ativos com destaque=true, do mais novo para o mais antigo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Produto" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+
+  /produtos/recentes:
+    get:
+      tags: [Produtos]
+      operationId: listarProdutosRecentes
+      summary: Produtos adicionados recentemente (ordenado por criado_em)
+      security: []
+      parameters:
+        - in: query
+          name: limite
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Produtos ativos mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Produto" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+
+  /produtos/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [Produtos]
+      operationId: buscarProdutoPorId
+      summary: Detalhe de um produto ativo (cache-aside via Redis)
+      security: []
+      responses:
+        "200":
+          description: Produto encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Produto" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "404":
+          description: Produto não existe ou está inativo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+    patch:
+      tags: [Produtos]
+      operationId: atualizarProduto
+      summary: Atualiza produto (invalida o cache no Redis)
+      description: >-
+        Exige a permissão "catalogo:gerenciar". Aceita qualquer subconjunto dos
+        campos. Para excluir, envie ativo=false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProdutoAtualizacao" }
+      responses:
+        "200":
+          description: Produto atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Produto" }
+        "400":
+          description: Dados inválidos ou marca/categoria inexistente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /produtos/{id}/estoque/baixa:
+    post:
+      tags: [Interno]
+      operationId: baixarEstoque
+      summary: Baixa atômica de estoque (RF16) — chamada pelo Vendas ao criar o pedido
+      description: >-
+        Autenticada pelo token de serviço (variável SERVICE_TOKEN, enviada como
+        Bearer), não pelo JWT de usuário. Sem SERVICE_TOKEN configurado a rota
+        fica desligada (404). O UPDATE só acontece se houver estoque suficiente,
+        então pedidos simultâneos nunca deixam o estoque negativo.
+      security:
+        - serviceToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantidade]
+              properties:
+                quantidade: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Estoque baixado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_produto: { type: integer }
+                  estoque: { type: integer, description: Saldo depois da baixa }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401":
+          description: Token de serviço ausente ou inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Produto não existe, está inativo, ou a rota está desligada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Estoque insuficiente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /categorias:
+    get:
+      tags: [Categorias]
+      operationId: listarCategorias
+      summary: Lista categorias ativas em ordem alfabética
+      security: []
+      responses:
+        "200":
+          description: Lista de categorias
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Categoria" }
+    post:
+      tags: [Categorias]
+      operationId: criarCategoria
+      summary: Cria categoria (permissão catalogo:gerenciar)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoriaEntrada" }
+      responses:
+        "201":
+          description: Categoria criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Categoria" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+
+  /categorias/{id}:
+    patch:
+      tags: [Categorias]
+      operationId: atualizarCategoria
+      summary: Edita ou inativa (ativo=false) uma categoria (permissão catalogo:gerenciar)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoriaEntrada" }
+      responses:
+        "200":
+          description: Categoria atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Categoria" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Categoria não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /marcas:
+    get:
+      tags: [Marcas]
+      operationId: listarMarcas
+      summary: Lista marcas ativas em ordem alfabética
+      security: []
+      responses:
+        "200":
+          description: Lista de marcas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Marca" }
+    post:
+      tags: [Marcas]
+      operationId: criarMarca
+      summary: Cria marca (permissão catalogo:gerenciar)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MarcaEntrada" }
+      responses:
+        "201":
+          description: Marca criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Marca" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+
+  /marcas/{id}:
+    patch:
+      tags: [Marcas]
+      operationId: atualizarMarca
+      summary: Edita ou inativa (ativo=false) uma marca (permissão catalogo:gerenciar)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MarcaEntrada" }
+      responses:
+        "200":
+          description: Marca atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Marca" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Marca não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /health/live:
+    get:
+      tags: [Operação]
+      operationId: healthLive
+      summary: Liveness — o processo está vivo
+      security: []
+      responses:
+        "200":
+          description: Vivo
+
+  /health:
+    get:
+      tags: [Operação]
+      operationId: healthReady
+      summary: Readiness — banco e Redis
+      description: >-
+        200 com status "ok" ou "degradado" (Redis fora: o catálogo funciona, só
+        sem cache). 503 quando o banco está indisponível.
+      security: []
+      responses:
+        "200":
+          description: Pronto (ok ou degradado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Banco indisponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /metrics:
+    get:
+      tags: [Operação]
+      operationId: metricas
+      summary: Métricas no formato Prometheus
+      description: >-
+        Responde 404 se METRICS_TOKEN não estiver configurado. Exige
+        "Authorization: Bearer METRICS_TOKEN" (diferente do JWT de usuário).
+      security:
+        - metricsToken: []
+      responses:
+        "200":
+          description: Métricas
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          description: Token de métricas ausente ou inválido
+        "404":
+          description: Métricas desabilitadas
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-paths:
-  /produtos:
-    get:
-      operationId: listarProdutos
-      summary: Lista produtos com filtros (categoria, marca, faixa de preço, disponibilidade, ordenação)
-      security: []
-      parameters:
-        - in: query
-          name: categoria
-          schema: { type: integer }
-        - in: query
-          name: marca
-          schema: { type: integer }
-        - in: query
-          name: precoMin
-          schema: { type: number }
-        - in: query
-          name: precoMax
-          schema: { type: number }
-        - in: query
-          name: busca
-          schema: { type: string }
-          description: Busca full-text pelo nome do produto
-        - in: query
-          name: ordenar
-          schema: { type: string, enum: [recentes, preco_asc, preco_desc] }
-      responses:
-        "200": { description: Lista de produtos (cache-aside via Redis) }
-        "400": { description: Parâmetros de filtro inválidos }
-  /produtos/{id}:
-    get:
-      operationId: buscarProdutoPorId
-      summary: Detalhe de um produto
-      security: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        "200": { description: Produto encontrado (cache-aside via Redis) }
-        "404": { description: Produto não existe }
-    patch:
-      operationId: atualizarProduto
-      summary: Atualiza produto (invalida cache no Redis)
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        "200": { description: Produto atualizado }
-        "404": { description: Produto não existe }
-  /produtos/destaque:
-    get:
-      operationId: listarProdutosDestaque
-      summary: Produtos em destaque (para o carrossel da home)
-      security: []
-      responses:
-        "200": { description: Lista de produtos com destaque=true }
-        "400": { description: Requisição inválida }
-  /produtos/recentes:
-    get:
-      operationId: listarProdutosRecentes
-      summary: Produtos adicionados recentemente (ordenado por criado_em)
-      security: []
-      responses:
-        "200": { description: Lista de produtos recentes }
-        "400": { description: Requisição inválida }
-  /categorias:
-    get:
-      operationId: listarCategorias
-      summary: Lista categorias
-      security: []
-      responses:
-        "200": { description: Lista de categorias }
-        "400": { description: Requisição inválida }
-  /marcas:
-    get:
-      operationId: listarMarcas
-      summary: Lista marcas
-      security: []
-      responses:
-        "200": { description: Lista de marcas }
-        "400": { description: Requisição inválida }
+    serviceToken:
+      type: http
+      scheme: bearer
+      description: Valor de SERVICE_TOKEN (compartilhado entre serviços; não é um JWT)
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: Valor de METRICS_TOKEN (não é um JWT)
+  responses:
+    DadosInvalidos:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    SemPermissao:
+      description: Sem a permissão catalogo:gerenciar
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+  schemas:
+    Erro:
+      type: object
+      properties:
+        erro: { type: string }
+        detalhes: { type: object }
+    Produto:
+      type: object
+      properties:
+        id_produto: { type: integer }
+        nome: { type: string }
+        descricao: { type: string, nullable: true }
+        preco: { type: number, description: Em reais, 2 casas decimais }
+        estoque: { type: integer }
+        imagem: { type: string, nullable: true }
+        destaque: { type: boolean }
+        ativo: { type: boolean }
+        peso: { type: number, nullable: true, description: kg }
+        altura: { type: number, nullable: true, description: cm }
+        largura: { type: number, nullable: true, description: cm }
+        comprimento: { type: number, nullable: true, description: cm }
+        id_marca: { type: integer }
+        id_categoria: { type: integer }
+        criado_em: { type: string, format: date-time }
+        marca:
+          type: object
+          properties:
+            id_marca: { type: integer }
+            nome: { type: string }
+        categoria:
+          type: object
+          properties:
+            id_categoria: { type: integer }
+            nome: { type: string }
+    ProdutoEntrada:
+      type: object
+      required: [nome, preco, id_marca, id_categoria]
+      properties:
+        nome: { type: string, minLength: 1, maxLength: 255 }
+        descricao: { type: string, maxLength: 5000, nullable: true }
+        preco: { type: number, exclusiveMinimum: true, minimum: 0, maximum: 99999999.99, description: No máximo 2 casas decimais }
+        estoque: { type: integer, minimum: 0, default: 0 }
+        imagem: { type: string, maxLength: 255, nullable: true }
+        destaque: { type: boolean, default: false }
+        ativo: { type: boolean, default: true }
+        peso: { type: number, maximum: 999.999, nullable: true }
+        altura: { type: number, maximum: 9999.99, nullable: true }
+        largura: { type: number, maximum: 9999.99, nullable: true }
+        comprimento: { type: number, maximum: 9999.99, nullable: true }
+        id_marca: { type: integer, minimum: 1 }
+        id_categoria: { type: integer, minimum: 1 }
+    ProdutoAtualizacao:
+      type: object
+      minProperties: 1
+      description: Qualquer subconjunto dos campos de ProdutoEntrada
+      properties:
+        nome: { type: string }
+        descricao: { type: string, nullable: true }
+        preco: { type: number }
+        estoque: { type: integer, minimum: 0 }
+        imagem: { type: string, nullable: true }
+        destaque: { type: boolean }
+        ativo: { type: boolean }
+        peso: { type: number, nullable: true }
+        altura: { type: number, nullable: true }
+        largura: { type: number, nullable: true }
+        comprimento: { type: number, nullable: true }
+        id_marca: { type: integer }
+        id_categoria: { type: integer }
+    Categoria:
+      type: object
+      properties:
+        id_categoria: { type: integer }
+        nome: { type: string }
+        icone: { type: string, nullable: true }
+        ativo: { type: boolean }
+    CategoriaEntrada:
+      type: object
+      properties:
+        nome: { type: string, minLength: 1, maxLength: 255 }
+        icone: { type: string, maxLength: 255, nullable: true }
+        ativo: { type: boolean, default: true }
+      description: No POST, "nome" é obrigatório. No PATCH, ao menos um campo.
+    Marca:
+      type: object
+      properties:
+        id_marca: { type: integer }
+        nome: { type: string }
+        ativo: { type: boolean }
+    MarcaEntrada:
+      type: object
+      properties:
+        nome: { type: string, minLength: 1, maxLength: 255 }
+        ativo: { type: boolean, default: true }
+      description: No POST, "nome" é obrigatório. No PATCH, ao menos um campo.
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degradado, indisponivel] }
+        servico: { type: string }
+        banco: { type: string, enum: [ok, falha] }
+        redis: { type: string, enum: [ok, falha] }

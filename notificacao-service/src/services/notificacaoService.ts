@@ -17,22 +17,50 @@ interface Envio {
   ocorridoEm: string;
 }
 
-// A restrição UNIQUE (id_pedido, tipo) garante que o mesmo e-mail não é enviado duas vezes (ADR-008).
-async function enviarUmaVez({ idPedido, tipo, destinatario, assunto, texto, ocorridoEm }: Envio) {
-  let log;
-  try {
-    log = await NotificacaoLog.create({ id_pedido: idPedido, tipo, destinatario, status: 'PENDENTE' });
-  } catch (err) {
-    if (err instanceof UniqueConstraintError) {
-      registrarEvento('evento_duplicado');
-      logger.info({ idPedido, tipo }, 'notificação já registrada, evento ignorado');
-      return;
+const TENTATIVAS_ENVIO = 3;
+const pausa = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Tenta de novo em falhas transitórias do SMTP, com pausa crescente (cabe no SLO 4: p95 < 10s).
+async function enviarComTentativas(email: Parameters<typeof enviarEmail>[0]) {
+  const intervalo = Number(process.env.EMAIL_RETRY_MS ?? 500);
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      return await enviarEmail(email);
+    } catch (err) {
+      if (tentativa >= TENTATIVAS_ENVIO) throw err;
+      logger.warn({ tentativa }, 'falha ao enviar e-mail, tentando novamente');
+      await pausa(intervalo * tentativa);
     }
-    throw err;
+  }
+}
+
+// A restrição UNIQUE (id_pedido, tipo) garante que o mesmo e-mail não é enviado duas vezes (ADR-008).
+// Exceção: se a tentativa anterior terminou em FALHA, um evento republicado tenta enviar de novo.
+async function registrarTentativa({ idPedido, tipo, destinatario }: Envio) {
+  try {
+    return await NotificacaoLog.create({ id_pedido: idPedido, tipo, destinatario, status: 'PENDENTE' });
+  } catch (err) {
+    if (!(err instanceof UniqueConstraintError)) throw err;
+    const existente = await NotificacaoLog.findOne({ where: { id_pedido: idPedido, tipo } });
+    if (existente?.status === 'FALHA') {
+      await existente.update({ status: 'PENDENTE', erro: null, destinatario });
+      return existente;
+    }
+    return null;
+  }
+}
+
+async function enviarUmaVez(envio: Envio) {
+  const { idPedido, tipo, destinatario, assunto, texto, ocorridoEm } = envio;
+  const log = await registrarTentativa(envio);
+  if (!log) {
+    registrarEvento('evento_duplicado');
+    logger.info({ idPedido, tipo }, 'notificação já registrada, evento ignorado');
+    return;
   }
 
   try {
-    await enviarEmail({ para: destinatario, assunto, texto });
+    await enviarComTentativas({ para: destinatario, assunto, texto });
     await log.update({ status: 'ENVIADO', enviado_em: new Date() });
     registrarEvento('email_enviado');
     registrarEntrega(tipo, ocorridoEm);

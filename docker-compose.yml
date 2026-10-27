@@ -39,7 +39,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${CATALOGO_DB_PASSWORD}
         volumes:
           - catalogo_db_data:/var/lib/mysql
-          - ./infra/migrations/catalogo:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${CATALOGO_DB_PASSWORD}"]
           interval: 5s
@@ -96,7 +95,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${NOTIFICACAO_DB_PASSWORD}
         volumes:
           - notificacao_db_data:/var/lib/mysql
-          - ./infra/migrations/notificacao:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${NOTIFICACAO_DB_PASSWORD}"]
           interval: 5s
@@ -134,6 +132,25 @@ services:
             RUN_SEEDS: "true"
         depends_on:
             identidade_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    catalogo:
+        build:
+            context: ./catalogo-service
+        container_name: catalogo
+        restart: unless-stopped
+        env_file: ./catalogo-service/.env
+        environment:
+            DB_HOST: catalogo_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            catalogo_db:
                 condition: service_healthy
             redis:
                 condition: service_healthy
