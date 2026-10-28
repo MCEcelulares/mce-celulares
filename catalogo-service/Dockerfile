@@ -1,3 +1,4 @@
+
 FROM node:20-alpine AS build
 
 WORKDIR /app
@@ -21,7 +22,7 @@ COPY --from=build /app/migrations ./migrations
 COPY --from=build /app/config ./config
 COPY --from=build /app/.sequelizerc ./.sequelizerc
 COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
-RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh && mkdir -p /app/uploads
 
 EXPOSE 3002
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
