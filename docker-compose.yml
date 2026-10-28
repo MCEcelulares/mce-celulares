@@ -57,7 +57,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${VENDAS_DB_PASSWORD}
         volumes:
           - vendas_db_data:/var/lib/mysql
-          - ./infra/migrations/vendas:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${VENDAS_DB_PASSWORD}"]
           interval: 5s
@@ -151,6 +150,25 @@ services:
             RUN_MIGRATIONS: "true"
         depends_on:
             catalogo_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    vendas:
+        build:
+            context: ./vendas-service
+        container_name: vendas
+        restart: unless-stopped
+        env_file: ./vendas-service/.env
+        environment:
+            DB_HOST: vendas_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            vendas_db:
                 condition: service_healthy
             redis:
                 condition: service_healthy

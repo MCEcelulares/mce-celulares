@@ -1,32 +1,51 @@
 openapi: 3.0.3
 info:
   title: Serviço Vendas — MCEcelulares
-  version: "1.0.0"
-  description: Carrinho, criação e acompanhamento de pedidos.
+  version: "1.1.0"
+  description: >-
+    Carrinho, criação e acompanhamento de pedidos. Ao criar o pedido o serviço
+    valida usuário e endereço no Identidade (repassando o token do usuário),
+    confere preço e estoque no Catálogo, baixa o estoque e publica
+    pedido.criado no Redis (contrato no ADR-008). Se algum passo falhar depois
+    de reservar estoque, a reserva é devolvida ao Catálogo.
   license:
     name: UNLICENSED
 servers:
   - url: /vendas
 security:
   - bearerAuth: []
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+tags:
+  - name: Carrinho
+    description: Carrinho ativo do usuário logado (um por usuário)
+  - name: Pedidos
+    description: Criação e consulta de pedidos
+  - name: Interno
+    description: Rotas também usadas por outros serviços (token de serviço)
+  - name: Operação
+    description: Health checks e métricas
+
 paths:
   /carrinho:
     get:
+      tags: [Carrinho]
       operationId: buscarCarrinho
-      summary: Retorna o carrinho ativo do usuário logado
+      summary: Retorna o carrinho ativo do usuário logado (cria um vazio se não existir)
       responses:
-        "200": { description: Carrinho com itens e total }
-        "401": { description: Usuário não autenticado }
+        "200":
+          description: Carrinho com itens e total (RF25)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Carrinho" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+
   /carrinho/itens:
     post:
+      tags: [Carrinho]
       operationId: adicionarItemCarrinho
       summary: Adiciona item ao carrinho
+      description: >-
+        Usa o preço atual do Catálogo. Se o produto já está no carrinho, soma a
+        quantidade. A soma não pode passar do estoque (RF26).
       requestBody:
         required: true
         content:
@@ -35,68 +54,221 @@ paths:
               type: object
               required: [idProduto, quantidade]
               properties:
-                idProduto: { type: integer }
-                quantidade: { type: integer }
+                idProduto: { type: integer, minimum: 1 }
+                quantidade: { type: integer, minimum: 1, maximum: 99 }
       responses:
-        "201": { description: Item adicionado }
-        "404": { description: Produto não existe }
+        "201":
+          description: Item adicionado; devolve o carrinho atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Carrinho" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "404":
+          description: Produto não existe (ou está inativo) no Catálogo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Quantidade acima do estoque disponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503": { $ref: "#/components/responses/ServicoIndisponivel" }
+
   /carrinho/itens/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, minimum: 1 }
+        description: id_item_carrinho
     patch:
+      tags: [Carrinho]
       operationId: atualizarItemCarrinho
       summary: Atualiza quantidade de um item do carrinho
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantidade]
+              properties:
+                quantidade: { type: integer, minimum: 1, maximum: 99 }
       responses:
-        "200": { description: Item atualizado }
-        "404": { description: Item não existe no carrinho }
+        "200":
+          description: Item atualizado; devolve o carrinho
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Carrinho" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "404":
+          description: Item não existe no carrinho do usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Sem estoque suficiente ou produto indisponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503": { $ref: "#/components/responses/ServicoIndisponivel" }
     delete:
+      tags: [Carrinho]
       operationId: removerItemCarrinho
       summary: Remove item do carrinho
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
       responses:
         "204": { description: Item removido }
-        "404": { description: Item não existe no carrinho }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "404":
+          description: Item não existe no carrinho do usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /pedidos:
     post:
+      tags: [Pedidos]
       operationId: criarPedido
-      summary: Cria um pedido a partir do carrinho (valida usuário em Identidade e publica pedido.criado)
+      summary: Cria um pedido a partir do carrinho (RF28)
+      description: >-
+        Valida o usuário e o endereço no Identidade, reconfere preço e estoque no
+        Catálogo, baixa o estoque, grava o pedido com cópia (snapshot) de itens,
+        endereço e dados do cliente, encerra o carrinho e publica
+        pedido.criado. O frete ainda não é calculado (valor_frete = 0).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idEndereco]
+              properties:
+                idEndereco:
+                  type: integer
+                  minimum: 1
+                  description: Endereço do usuário (Identidade) para entrega (RF29, RF40)
       responses:
-        "201": { description: "Pedido criado, aguardando pagamento" }
-        "422": { description: Usuário inválido ou carrinho vazio }
+        "201":
+          description: Pedido criado, aguardando pagamento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pedido" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "409":
+          description: Estoque insuficiente (nenhuma reserva fica pendente)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "422":
+          description: >-
+            Carrinho vazio, usuário inválido ou inativo, usuário sem CPF/telefone,
+            endereço que não pertence ao usuário, ou produto que saiu do catálogo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503": { $ref: "#/components/responses/ServicoIndisponivel" }
     get:
+      tags: [Pedidos]
       operationId: listarPedidos
-      summary: Lista pedidos do usuário logado
+      summary: Lista os pedidos do usuário logado (RF31), com filtro por status e paginação (RF37)
+      description: >-
+        Resumo sem itens. Com todos=true lista os pedidos de todos os clientes
+        (RF32); exige a permissão "pedidos:listar-todos".
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/StatusPedido" }
+        - in: query
+          name: todos
+          schema: { type: boolean, default: false }
+        - in: query
+          name: pagina
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limite
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
-        "200": { description: Lista de pedidos com status }
-        "401": { description: Usuário não autenticado }
+        "200":
+          description: Página de pedidos, do mais recente para o mais antigo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dados:
+                    type: array
+                    items: { $ref: "#/components/schemas/PedidoResumo" }
+                  pagina: { type: integer }
+                  limite: { type: integer }
+                  total: { type: integer }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: todos=true sem a permissão pedidos:listar-todos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /pedidos/{id}:
     get:
+      tags: [Pedidos]
       operationId: buscarPedidoPorId
-      summary: Detalhe de um pedido
+      summary: Detalhe de um pedido (RF34)
+      description: Permitido ao dono do pedido ou a quem tem "pedidos:listar-todos".
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       responses:
-        "200": { description: Pedido encontrado }
-        "404": { description: Pedido não existe }
+        "200":
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pedido" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: O pedido é de outro usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Pedido não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /pedidos/{id}/status:
     patch:
+      tags: [Interno]
       operationId: atualizarStatusPedido
-      summary: Atualiza status do pedido (chamado internamente pelo serviço Pagamento)
+      summary: Atualiza o status do pedido (RF33, RF35)
+      description: >-
+        Aceita duas formas de autenticação. (1) Token de serviço (SERVICE_TOKEN
+        como Bearer): é como o Pagamento confirma o pagamento; vale qualquer
+        transição permitida. (2) JWT de usuário: exige "pedidos:atualizar-status"
+        e, para CANCELADO, "pedidos:cancelar". Fluxo permitido:
+        AGUARDANDO_PAGAMENTO → PAGO | CANCELADO; PAGO → ENVIADO | CANCELADO;
+        ENVIADO → ENTREGUE. Repetir o status atual responde 200 sem alterar nada.
+        Ao cancelar, o estoque de cada item é devolvido ao Catálogo (melhor
+        esforço; falhas são registradas em log e na métrica
+        vendas_eventos_total{evento="estoque_nao_devolvido"}). A resposta traz o
+        cliente (nome e e-mail) para o Pagamento montar o evento
+        pagamento.confirmado.
+      security:
+        - serviceToken: []
+        - bearerAuth: []
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       requestBody:
         required: true
         content:
@@ -105,7 +277,190 @@ paths:
               type: object
               required: [status]
               properties:
-                status: { type: string }
+                status: { $ref: "#/components/schemas/StatusPedido" }
       responses:
-        "200": { description: Status atualizado }
-        "404": { description: Pedido não existe }
+        "200":
+          description: Status atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pedido" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Sem a permissão exigida para este status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Pedido não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Transição de status não permitida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /health/live:
+    get:
+      tags: [Operação]
+      operationId: healthLive
+      summary: Liveness — o processo está vivo
+      security: []
+      responses:
+        "200": { description: Vivo }
+
+  /health:
+    get:
+      tags: [Operação]
+      operationId: healthReady
+      summary: Readiness — banco e Redis
+      description: >-
+        200 com status "ok" ou "degradado" (Redis fora: pedidos são criados, mas o
+        evento pedido.criado não é publicado). 503 quando o banco está indisponível.
+      security: []
+      responses:
+        "200":
+          description: Pronto (ok ou degradado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Banco indisponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /metrics:
+    get:
+      tags: [Operação]
+      operationId: metricas
+      summary: Métricas no formato Prometheus
+      description: >-
+        Responde 404 se METRICS_TOKEN não estiver configurado. Exige
+        "Authorization: Bearer METRICS_TOKEN" (diferente do JWT de usuário).
+      security:
+        - metricsToken: []
+      responses:
+        "200":
+          description: Métricas
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { description: Token de métricas ausente ou inválido }
+        "404": { description: Métricas desabilitadas }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: http
+      scheme: bearer
+      description: Valor de SERVICE_TOKEN do Vendas (compartilhado com o Pagamento; não é um JWT)
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: Valor de METRICS_TOKEN (não é um JWT)
+  responses:
+    DadosInvalidos:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    ServicoIndisponivel:
+      description: Catálogo ou Identidade indisponível (timeout, erro 5xx ou rede)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+  schemas:
+    Erro:
+      type: object
+      properties:
+        erro: { type: string }
+        detalhes: { type: object }
+    StatusPedido:
+      type: string
+      enum: [AGUARDANDO_PAGAMENTO, PAGO, ENVIADO, ENTREGUE, CANCELADO]
+    Carrinho:
+      type: object
+      properties:
+        id_carrinho: { type: integer }
+        itens:
+          type: array
+          items:
+            type: object
+            properties:
+              id_item_carrinho: { type: integer }
+              id_produto: { type: integer }
+              quantidade: { type: integer }
+              preco_unitario: { type: number }
+              subtotal: { type: number }
+        total: { type: number }
+    PedidoResumo:
+      type: object
+      properties:
+        id_pedido: { type: integer }
+        data: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/StatusPedido" }
+        valor_total: { type: number }
+        valor_frete: { type: number }
+        cliente: { $ref: "#/components/schemas/ClientePedido" }
+    Pedido:
+      type: object
+      description: Nunca inclui CPF nem o id do envio externo.
+      properties:
+        id_pedido: { type: integer }
+        data: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/StatusPedido" }
+        valor_total: { type: number }
+        valor_frete: { type: number }
+        metodo_envio: { type: string, nullable: true }
+        prazo_entrega_dias: { type: integer, nullable: true }
+        codigo_rastreio: { type: string, nullable: true }
+        itens:
+          type: array
+          items:
+            type: object
+            properties:
+              id_item: { type: integer }
+              id_produto: { type: integer, nullable: true }
+              nome_produto: { type: string, description: Cópia do nome no momento da compra }
+              quantidade: { type: integer }
+              preco_unitario: { type: number, description: Preço no momento da compra }
+        endereco:
+          type: object
+          nullable: true
+          description: Cópia do endereço no momento da compra
+          properties:
+            endereco: { type: string }
+            numero: { type: string }
+            complemento: { type: string, nullable: true }
+            bairro: { type: string, nullable: true }
+            cidade: { type: string }
+            estado: { type: string }
+            cep: { type: string }
+        cliente: { $ref: "#/components/schemas/ClientePedido" }
+    ClientePedido:
+      type: object
+      nullable: true
+      properties:
+        id_usuario: { type: integer, nullable: true }
+        nome: { type: string }
+        email: { type: string }
+        telefone: { type: string }
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degradado, indisponivel] }
+        servico: { type: string }
+        banco: { type: string, enum: [ok, falha] }
+        redis: { type: string, enum: [ok, falha] }
