@@ -32,13 +32,21 @@ router.patch(
   produtoController.atualizar
 );
 
-// Chamada pelo Vendas ao criar o pedido (RF16).
+// Chamadas pelo Vendas: baixa ao criar o pedido (RF16) e reposição se o pedido falhar ou for cancelado.
 router.post(
   '/:id/estoque/baixa',
   exigirTokenServico,
   validar(idParamSchema, 'params'),
   validar(baixaEstoqueSchema),
   produtoController.baixarEstoque
+);
+
+router.post(
+  '/:id/estoque/reposicao',
+  exigirTokenServico,
+  validar(idParamSchema, 'params'),
+  validar(baixaEstoqueSchema),
+  produtoController.reporEstoque
 );
 
 export default router;

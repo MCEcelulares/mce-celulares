@@ -300,6 +300,38 @@ describe('POST /produtos/:id/estoque/baixa (uso interno do Vendas)', () => {
   });
 });
 
+describe('POST /produtos/:id/estoque/reposicao (uso interno do Vendas)', () => {
+  it('só aceita o token de serviço', async () => {
+    expect((await api.post('/produtos/1/estoque/reposicao').send({ quantidade: 1 })).status).toBe(401);
+    expect((await api.post('/produtos/1/estoque/reposicao').set(admin).send({ quantidade: 1 })).status).toBe(401);
+    expect(produtoMock.update).not.toHaveBeenCalled();
+  });
+
+  it('rejeita quantidade inválida com 400', async () => {
+    const r = await api.post('/produtos/1/estoque/reposicao').set(servico).send({ quantidade: 0 });
+    expect(r.status).toBe(400);
+  });
+
+  it('soma ao estoque (inclusive de produto inativo), invalida o cache e devolve o saldo', async () => {
+    produtoMock.findOne.mockResolvedValue(linha());
+    await api.get('/produtos/1');
+    produtoMock.update.mockResolvedValue([1]);
+    produtoMock.findByPk.mockResolvedValue(linha({ estoque: 13, ativo: false }));
+
+    const r = await api.post('/produtos/1/estoque/reposicao').set(servico).send({ quantidade: 3 });
+
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ id_produto: 1, estoque: 13 });
+    expect(produtoMock.update.mock.calls[0][1].where).toEqual({ id_produto: 1 });
+    expect(await redis.get('produto:1')).toBeNull();
+  });
+
+  it('responde 404 quando o produto não existe', async () => {
+    produtoMock.update.mockResolvedValue([0]);
+    expect((await api.post('/produtos/9/estoque/reposicao').set(servico).send({ quantidade: 1 })).status).toBe(404);
+  });
+});
+
 describe.each([
   ['categorias', categoriaMock, { nome: 'Smartphones', icone: 'phone' }],
   ['marcas', marcaMock, { nome: 'Apple' }],

@@ -56,3 +56,11 @@ export async function baixarEstoque(req: Request, res: Response, next: NextFunct
     next(err);
   }
 }
+
+export async function reporEstoque(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json(await produtoService.reporEstoque(Number(req.params.id), req.body.quantidade));
+  } catch (err) {
+    next(err);
+  }
+}

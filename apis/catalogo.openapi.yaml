@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Serviço Catálogo — MCEcelulares
-  version: "1.1.0"
+  version: "1.2.0"
   description: >-
     Produtos, categorias, marcas, busca e filtros. A leitura é pública; criar e
     editar exige a permissão "catalogo:gerenciar" (RBAC do Identidade, ADR-006).
@@ -247,6 +247,52 @@ paths:
               schema: { $ref: "#/components/schemas/Erro" }
         "409":
           description: Estoque insuficiente
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /produtos/{id}/estoque/reposicao:
+    post:
+      tags: [Interno]
+      operationId: reporEstoque
+      summary: Devolve estoque — chamada pelo Vendas se a criação do pedido falhar ou se o pedido for cancelado
+      description: >-
+        Mesma autenticação da baixa (token de serviço). Soma a quantidade ao
+        estoque, inclusive de produto inativo.
+      security:
+        - serviceToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantidade]
+              properties:
+                quantidade: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Estoque reposto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_produto: { type: integer }
+                  estoque: { type: integer, description: Saldo depois da reposição }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401":
+          description: Token de serviço ausente ou inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Produto não existe, ou a rota está desligada
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }

@@ -146,3 +146,17 @@ export async function baixarEstoque(id: number, quantidade: number) {
   const atualizado = await Produto.findByPk(id);
   return { id_produto: id, estoque: atualizado!.estoque };
 }
+
+// Devolve estoque (pedido cancelado ou criação de pedido que falhou no meio). Vale também para produto inativo.
+export async function reporEstoque(id: number, quantidade: number) {
+  const [afetadas] = await Produto.update(
+    { estoque: literal(`estoque + ${quantidade}`) as unknown as number },
+    { where: { id_produto: id } }
+  );
+  if (afetadas === 0) throw new ErroHttp(404, 'Produto não existe');
+
+  await apagarCache(chaveCache(id));
+  registrarEvento('estoque_reposto');
+  const atualizado = await Produto.findByPk(id);
+  return { id_produto: id, estoque: atualizado!.estoque };
+}
