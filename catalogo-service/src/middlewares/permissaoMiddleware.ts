@@ -15,3 +15,7 @@ export function exigirPermissao(...permissoes: string[]) {
     next();
   };
 }
+
+export function temPermissao(req: AuthRequest, permissao: string): boolean {
+  return req.usuarioAutenticado?.permissoes.includes(permissao) ?? false;
+}

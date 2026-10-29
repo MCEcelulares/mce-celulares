@@ -1,19 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
 import { timingSafeEqual } from 'crypto';
+import { logger } from '../utils/logger';
 
-// Rotas chamadas só por outros serviços (ex.: Vendas baixando estoque).
-// Sem SERVICE_TOKEN configurado a rota fica desligada (404), como o /metrics.
-export function exigirTokenServico(req: Request, res: Response, next: NextFunction) {
-  const esperado = process.env.SERVICE_TOKEN;
-  if (!esperado) {
-    return res.status(404).json({ erro: 'Rota não encontrada' });
-  }
-
-  const header = req.headers.authorization ?? '';
-  const recebido = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+function tokensIguais(recebido: string, esperado: string): boolean {
   const a = Buffer.from(recebido);
   const b = Buffer.from(esperado);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function autenticarServico(req: Request, res: Response, next: NextFunction) {
+  const esperado = process.env.SERVICE_TOKEN;
+  if (!esperado) {
+    logger.error('SERVICE_TOKEN não configurado: rotas internas desativadas');
+    return res.status(503).json({ erro: 'Rotas internas indisponíveis' });
+  }
+
+  const recebido = req.headers['x-service-token'];
+  if (typeof recebido !== 'string' || !tokensIguais(recebido, esperado)) {
+    logger.warn('rota interna: token de serviço ausente ou inválido');
     return res.status(401).json({ erro: 'Token de serviço inválido' });
   }
   next();

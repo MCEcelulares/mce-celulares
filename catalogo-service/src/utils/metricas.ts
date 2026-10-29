@@ -22,13 +22,24 @@ const duracao = new client.Histogram({
 
 const eventos = new client.Counter({
   name: 'catalogo_eventos_total',
-  help: 'Eventos de negócio do Catálogo (cache_hit, cache_miss, estoque_baixado, estoque_insuficiente...)',
+  help: 'Eventos de negócio do Catálogo (produto criado, reserva de estoque, devolução...)',
   labelNames: ['evento'],
+  registers: [registro],
+});
+
+const cache = new client.Counter({
+  name: 'catalogo_cache_total',
+  help: 'Resultado das consultas ao cache Redis (hit, miss, erro)',
+  labelNames: ['resultado'],
   registers: [registro],
 });
 
 export function registrarEvento(evento: string) {
   eventos.inc({ evento });
+}
+
+export function registrarCache(resultado: 'hit' | 'miss' | 'erro') {
+  cache.inc({ resultado });
 }
 
 function rotulo(req: Request): string {

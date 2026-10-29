@@ -22,10 +22,30 @@ export class Categoria
 
 Categoria.init(
   {
-    id_categoria: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    nome: { type: DataTypes.STRING(255), allowNull: false },
-    icone: { type: DataTypes.STRING(255), allowNull: true },
-    ativo: { type: DataTypes.BOOLEAN, defaultValue: true },
+    id_categoria: { 
+      type: DataTypes.INTEGER, 
+      primaryKey: true, 
+      autoIncrement: true 
+    },
+    nome: { 
+      type: DataTypes.STRING(100), 
+      allowNull: false, 
+      unique: true 
+    },
+    icone: { 
+      type: DataTypes.STRING, 
+      allowNull: true 
+    },
+    ativo: { 
+      type: DataTypes.BOOLEAN, 
+      allowNull: false, 
+      defaultValue: true 
+    },
   },
-  { sequelize, modelName: 'Categoria', tableName: 'categoria', timestamps: false }
+  { 
+    sequelize, 
+    modelName: 'Categoria', 
+    tableName: 'categoria', 
+    timestamps: false 
+  }
 );
