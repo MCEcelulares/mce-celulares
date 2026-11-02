@@ -1,23 +1,23 @@
 import { z } from 'zod';
+import { booleanoQuerySchema } from './camposComuns';
 
-const nome = z.string().trim().min(1).max(255);
-const algumCampo = (dados: object) => Object.keys(dados).length > 0;
+const nome = z.string().trim().min(2).max(100);
+const icone = z.string().trim().max(255);
 
 export const criarCategoriaSchema = z.object({
   nome,
-  icone: z.string().trim().max(255).nullable().optional(),
-  ativo: z.boolean().default(true),
+  icone: icone.nullable().optional(),
+  ativo: z.boolean().optional(),
 });
 
-export const atualizarCategoriaSchema = criarCategoriaSchema
+export const atualizarCategoriaSchema = z
+  .object({ nome, icone: icone.nullable(), ativo: z.boolean() })
   .partial()
-  .refine(algumCampo, { message: 'Informe ao menos um campo' });
+  .refine((dados) => Object.keys(dados).length > 0, 'Informe ao menos um campo');
 
-export const criarMarcaSchema = z.object({
-  nome,
-  ativo: z.boolean().default(true),
+export const listarCadastrosQuerySchema = z.object({
+  incluirInativos: booleanoQuerySchema.optional(),
 });
 
-export const atualizarMarcaSchema = criarMarcaSchema
-  .partial()
-  .refine(algumCampo, { message: 'Informe ao menos um campo' });
+export type CriarCategoriaInput = z.infer<typeof criarCategoriaSchema>;
+export type AtualizarCategoriaInput = z.infer<typeof atualizarCategoriaSchema>;

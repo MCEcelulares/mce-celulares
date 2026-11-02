@@ -1,26 +1,27 @@
 import { Router } from 'express';
 import * as produtoController from '../controllers/produtoController';
-import { autenticar } from '../middlewares/authMiddleware';
+import { autenticar, autenticarOpcional } from '../middlewares/authMiddleware';
 import { exigirPermissao } from '../middlewares/permissaoMiddleware';
-import { exigirTokenServico } from '../middlewares/servicoMiddleware';
 import { validar } from '../middlewares/validate';
+import { receberImagem } from '../middlewares/uploadImagem';
+import { permissaoGerenciar } from '../config/catalogo';
 import {
-  listarProdutosQuerySchema,
-  limiteQuerySchema,
   criarProdutoSchema,
   atualizarProdutoSchema,
-  baixaEstoqueSchema,
+  ajustarEstoqueSchema,
+  listarProdutosQuerySchema,
+  vitrineQuerySchema,
 } from '../validators/produtoValidators';
 import { idParamSchema } from '../validators/paramsValidators';
 
 const router = Router();
 
-const podeGerenciar = exigirPermissao('catalogo:gerenciar');
+const podeGerenciar = exigirPermissao(permissaoGerenciar);
 
-router.get('/', validar(listarProdutosQuerySchema, 'query'), produtoController.listar);
-router.get('/destaque', validar(limiteQuerySchema, 'query'), produtoController.destaque);
-router.get('/recentes', validar(limiteQuerySchema, 'query'), produtoController.recentes);
-router.get('/:id', validar(idParamSchema, 'params'), produtoController.buscar);
+router.get('/', autenticarOpcional, validar(listarProdutosQuerySchema, 'query'), produtoController.listar);
+router.get('/destaque', validar(vitrineQuerySchema, 'query'), produtoController.destaques);
+router.get('/recentes', validar(vitrineQuerySchema, 'query'), produtoController.recentes);
+router.get('/:id', autenticarOpcional, validar(idParamSchema, 'params'), produtoController.buscar);
 
 router.post('/', autenticar, podeGerenciar, validar(criarProdutoSchema), produtoController.criar);
 router.patch(
@@ -31,14 +32,25 @@ router.patch(
   validar(atualizarProdutoSchema),
   produtoController.atualizar
 );
+router.delete('/:id', autenticar, validar(idParamSchema, 'params'), podeGerenciar, produtoController.inativar);
 
-// Chamada pelo Vendas ao criar o pedido (RF16).
-router.post(
-  '/:id/estoque/baixa',
-  exigirTokenServico,
+router.patch(
+  '/:id/estoque',
+  autenticar,
   validar(idParamSchema, 'params'),
-  validar(baixaEstoqueSchema),
-  produtoController.baixarEstoque
+  podeGerenciar,
+  validar(ajustarEstoqueSchema),
+  produtoController.ajustarEstoque
 );
+
+router.put(
+  '/:id/imagem',
+  autenticar,
+  validar(idParamSchema, 'params'),
+  podeGerenciar,
+  receberImagem,
+  produtoController.enviarImagem
+);
+router.delete('/:id/imagem', autenticar, validar(idParamSchema, 'params'), podeGerenciar, produtoController.removerImagem);
 
 export default router;
