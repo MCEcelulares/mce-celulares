@@ -1,7 +1,10 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import 'dotenv/config';
 
-const publicKey = (process.env.JWT_PUBLIC_KEY ?? '').replace(/\\n/g, '\n').trim();
+const publicKey = crypto
+  .createPublicKey((process.env.JWT_PUBLIC_KEY ?? '').replace(/\\n/g, '\n').trim())
+  .export({ type: 'spki', format: 'pem' }) as string;
 
 export interface TokenPayload {
   id_usuario: number;

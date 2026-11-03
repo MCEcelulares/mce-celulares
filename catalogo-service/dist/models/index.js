@@ -1,0 +1,17 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ReservaEstoque = exports.Produto = exports.Marca = exports.Categoria = void 0;
+const Categoria_1 = require("./Categoria");
+Object.defineProperty(exports, "Categoria", { enumerable: true, get: function () { return Categoria_1.Categoria; } });
+const Marca_1 = require("./Marca");
+Object.defineProperty(exports, "Marca", { enumerable: true, get: function () { return Marca_1.Marca; } });
+const Produto_1 = require("./Produto");
+Object.defineProperty(exports, "Produto", { enumerable: true, get: function () { return Produto_1.Produto; } });
+const ReservaEstoque_1 = require("./ReservaEstoque");
+Object.defineProperty(exports, "ReservaEstoque", { enumerable: true, get: function () { return ReservaEstoque_1.ReservaEstoque; } });
+Categoria_1.Categoria.hasMany(Produto_1.Produto, { foreignKey: 'id_categoria', as: 'produtos' });
+Produto_1.Produto.belongsTo(Categoria_1.Categoria, { foreignKey: 'id_categoria', as: 'categoria' });
+Marca_1.Marca.hasMany(Produto_1.Produto, { foreignKey: 'id_marca', as: 'produtos' });
+Produto_1.Produto.belongsTo(Marca_1.Marca, { foreignKey: 'id_marca', as: 'marca' });
+Produto_1.Produto.hasMany(ReservaEstoque_1.ReservaEstoque, { foreignKey: 'id_produto' });
+ReservaEstoque_1.ReservaEstoque.belongsTo(Produto_1.Produto, { foreignKey: 'id_produto' });

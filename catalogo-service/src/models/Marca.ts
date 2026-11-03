@@ -17,9 +17,26 @@ export class Marca extends Model<MarcaAttributes, MarcaCreationAttributes> imple
 
 Marca.init(
   {
-    id_marca: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    nome: { type: DataTypes.STRING(255), allowNull: false },
-    ativo: { type: DataTypes.BOOLEAN, defaultValue: true },
+    id_marca: { 
+      type: DataTypes.INTEGER, 
+      primaryKey: true, 
+      autoIncrement: true 
+    },
+    nome: { 
+      type: DataTypes.STRING(100), 
+      allowNull: false, 
+      unique: true 
+    },
+    ativo: { 
+      type: DataTypes.BOOLEAN, 
+      allowNull: false, 
+      defaultValue: true 
+    },
   },
-  { sequelize, modelName: 'Marca', tableName: 'marca', timestamps: false }
+  { 
+    sequelize, 
+    modelName: 'Marca', 
+    tableName: 'marca', 
+    timestamps: false 
+  }
 );

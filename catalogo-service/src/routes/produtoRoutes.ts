@@ -1,34 +1,28 @@
 import { Router } from 'express';
 import * as produtoController from '../controllers/produtoController';
-import { autenticar } from '../middlewares/authMiddleware';
-import { exigirGestorParaInativos } from '../middlewares/inativosMiddleware';
+import { autenticar, autenticarOpcional } from '../middlewares/authMiddleware';
 import { exigirPermissao } from '../middlewares/permissaoMiddleware';
-import { exigirTokenServico } from '../middlewares/servicoMiddleware';
-import { receberImagem } from '../middlewares/uploadMiddleware';
 import { validar } from '../middlewares/validate';
+import { receberImagem } from '../middlewares/uploadImagem';
+import { permissaoGerenciar } from '../config/catalogo';
 import {
-  listarProdutosQuerySchema,
-  limiteQuerySchema,
   criarProdutoSchema,
   atualizarProdutoSchema,
-  baixaEstoqueSchema,
+  ajustarEstoqueSchema,
+  listarProdutosQuerySchema,
+  vitrineQuerySchema,
 } from '../validators/produtoValidators';
 import { idParamSchema } from '../validators/paramsValidators';
 import { limitarUpload } from '../utils/rateLimit';
 
 const router = Router();
 
-const podeGerenciar = exigirPermissao('catalogo:gerenciar');
-const podeVerPainel = exigirPermissao('dashboard:ver');
+const podeGerenciar = exigirPermissao(permissaoGerenciar);
 
-router.get('/', exigirGestorParaInativos, validar(listarProdutosQuerySchema, 'query'), produtoController.listar);
-router.get('/destaque', validar(limiteQuerySchema, 'query'), produtoController.destaque);
-router.get('/recentes', validar(limiteQuerySchema, 'query'), produtoController.recentes);
-
-// Painel administrativo (RF46). Precisa vir antes de "/:id".
-router.get('/resumo', autenticar, podeVerPainel, produtoController.resumo);
-
-router.get('/:id', exigirGestorParaInativos, validar(idParamSchema, 'params'), produtoController.buscar);
+router.get('/', autenticarOpcional, validar(listarProdutosQuerySchema, 'query'), produtoController.listar);
+router.get('/destaque', validar(vitrineQuerySchema, 'query'), produtoController.destaques);
+router.get('/recentes', validar(vitrineQuerySchema, 'query'), produtoController.recentes);
+router.get('/:id', autenticarOpcional, validar(idParamSchema, 'params'), produtoController.buscar);
 
 router.post('/', autenticar, podeGerenciar, validar(criarProdutoSchema), produtoController.criar);
 router.patch(
@@ -39,27 +33,26 @@ router.patch(
   validar(atualizarProdutoSchema),
   produtoController.atualizar
 );
+router.delete('/:id', autenticar, validar(idParamSchema, 'params'), podeGerenciar, produtoController.inativar);
 
-// RF15: imagem do produto (multipart/form-data, campo "imagem"). A autenticação vem antes do upload
-// para que quem não pode gerenciar nem consiga enviar o arquivo.
-router.post(
+router.patch(
+  '/:id/estoque',
+  autenticar,
+  validar(idParamSchema, 'params'),
+  podeGerenciar,
+  validar(ajustarEstoqueSchema),
+  produtoController.ajustarEstoque
+);
+
+router.put(
   '/:id/imagem',
   autenticar,
   validar(idParamSchema, 'params'),
   podeGerenciar,
-  limitarUpload,
   receberImagem,
   produtoController.enviarImagem
 );
-
-// Chamadas pelo Vendas: baixa ao criar o pedido (RF16) e reposição se o pedido falhar ou for cancelado.
-router.post(
-  '/:id/estoque/baixa',
-  exigirTokenServico,
-  validar(idParamSchema, 'params'),
-  validar(baixaEstoqueSchema),
-  produtoController.baixarEstoque
-);
+router.delete('/:id/imagem', autenticar, validar(idParamSchema, 'params'), podeGerenciar, produtoController.removerImagem);
 
 router.post(
   '/:id/estoque/reposicao',

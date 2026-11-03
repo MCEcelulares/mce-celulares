@@ -9,6 +9,6 @@ export const logger = pino({
   base: { servico: 'catalogo-service' },
   timestamp: pino.stdTimeFunctions.isoTime,
   mixin: () => ({ idCorrelacao: contextoRequisicao.getStore()?.idCorrelacao }),
-  redact: ['req.headers.authorization'],
+  redact: ['req.headers.authorization', 'req.headers["x-service-token"]'],
   transport: saidaLegivel ? { target: 'pino-pretty', options: { colorize: true } } : undefined,
 });

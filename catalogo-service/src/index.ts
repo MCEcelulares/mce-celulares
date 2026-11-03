@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { app } from './app';
 import { sequelize } from './config/database';
 import { redis, aguardarRedis } from './config/redis';
+import { garantirDiretorioDeImagens } from './services/imagemService';
 import { logger } from './utils/logger';
 import './models';
 
@@ -17,6 +18,7 @@ async function start() {
   }
 
   await aguardarRedis();
+  await garantirDiretorioDeImagens();
 
   const server = app.listen(porta, () => {
     logger.info({ porta }, 'catalogo-service no ar');

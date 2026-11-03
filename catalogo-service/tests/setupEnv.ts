@@ -1,4 +1,10 @@
+import dotenv from 'dotenv';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { generateKeyPairSync } from 'crypto';
+
+dotenv.config();
 
 const { publicKey, privateKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
@@ -7,18 +13,10 @@ const { publicKey, privateKey } = generateKeyPairSync('rsa', {
 });
 
 process.env.JWT_PUBLIC_KEY = publicKey;
-process.env.TESTE_JWT_PRIVATE_KEY = privateKey;
+process.env.JWT_PRIVATE_KEY_TESTE = privateKey; // só os testes assinam tokens (no serviço real só existe a chave pública)
+process.env.SERVICE_TOKEN = 'token-de-servico-de-teste';
+process.env.METRICS_TOKEN = 'token-de-teste';
+process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'catalogo-imagens-'));
+process.env.IMAGENS_URL_BASE = '/catalogo/imagens';
 process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = 'silent';
-process.env.METRICS_TOKEN = 'token-de-teste';
-process.env.SERVICE_TOKEN = 'token-de-servico-teste';
-process.env.CACHE_TTL_SEGUNDOS = '60';
-
-// Imagens de teste vão para uma pasta temporária própria desta execução.
-import { mkdtempSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-
-process.env.UPLOADS_DIR = mkdtempSync(join(tmpdir(), 'catalogo-uploads-'));
-process.env.IMAGENS_URL_BASE = '/catalogo/imagens';
-process.env.RATE_LIMIT_DESLIGADO = 'true';
