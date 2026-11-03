@@ -23,6 +23,8 @@ COPY --from=build /app/.sequelizerc ./.sequelizerc
 COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
+USER node
+
 EXPOSE 3003
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
   CMD node -e "fetch('http://localhost:3003/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

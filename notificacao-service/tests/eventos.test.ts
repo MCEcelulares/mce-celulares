@@ -60,6 +60,36 @@ describe('pedido.criado', () => {
     expect(anterior.update).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'ENVIADO' }));
   });
 
+  it('reenvia quando um evento republicado encontra um envio preso em PENDENTE há mais de 10 minutos', async () => {
+    const preso = {
+      status: 'PENDENTE',
+      criado_em: new Date(Date.now() - 11 * 60_000),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    logMock.create.mockRejectedValueOnce(new UniqueConstraintError({}));
+    logMock.findOne.mockResolvedValueOnce(preso);
+
+    await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+
+    expect(emailMock).toHaveBeenCalledTimes(1);
+    expect(preso.update).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'ENVIADO' }));
+  });
+
+  it('ignora um PENDENTE recente (outro processo ainda está enviando)', async () => {
+    const recente = {
+      status: 'PENDENTE',
+      criado_em: new Date(Date.now() - 30_000),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    logMock.create.mockRejectedValueOnce(new UniqueConstraintError({}));
+    logMock.findOne.mockResolvedValueOnce(recente);
+
+    await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+
+    expect(emailMock).not.toHaveBeenCalled();
+    expect(recente.update).not.toHaveBeenCalled();
+  });
+
   it('tenta de novo e consegue enviar após uma falha transitória do SMTP', async () => {
     emailMock.mockRejectedValueOnce(new Error('timeout'));
     await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));

@@ -8,6 +8,7 @@ volumes:
     vendas_db_data:
     pagamento_db_data:
     notificacao_db_data:
+    catalogo_uploads:
 
 services:
     identidade_db:
@@ -75,7 +76,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${PAGAMENTO_DB_PASSWORD}
         volumes:
           - pagamento_db_data:/var/lib/mysql
-          - ./infra/migrations/pagamento:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${PAGAMENTO_DB_PASSWORD}"]
           interval: 5s
@@ -148,6 +148,9 @@ services:
             DB_PORT: "3306"
             REDIS_URL: redis://redis:6379
             RUN_MIGRATIONS: "true"
+            UPLOADS_DIR: /app/uploads
+        volumes:
+            - catalogo_uploads:/app/uploads
         depends_on:
             catalogo_db:
                 condition: service_healthy
@@ -169,6 +172,25 @@ services:
             RUN_MIGRATIONS: "true"
         depends_on:
             vendas_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    pagamento:
+        build:
+            context: ./pagamento-service
+        container_name: pagamento
+        restart: unless-stopped
+        env_file: ./pagamento-service/.env
+        environment:
+            DB_HOST: pagamento_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            pagamento_db:
                 condition: service_healthy
             redis:
                 condition: service_healthy

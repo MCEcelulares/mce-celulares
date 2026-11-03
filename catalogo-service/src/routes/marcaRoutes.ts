@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as marcaController from '../controllers/marcaController';
 import { autenticar } from '../middlewares/authMiddleware';
+import { exigirGestorParaInativos } from '../middlewares/inativosMiddleware';
 import { exigirPermissao } from '../middlewares/permissaoMiddleware';
 import { validar } from '../middlewares/validate';
 import { criarMarcaSchema, atualizarMarcaSchema } from '../validators/categoriaValidators';
@@ -10,7 +11,7 @@ const router = Router();
 
 const podeGerenciar = exigirPermissao('catalogo:gerenciar');
 
-router.get('/', marcaController.listar);
+router.get('/', exigirGestorParaInativos, marcaController.listar);
 router.post('/', autenticar, podeGerenciar, validar(criarMarcaSchema), marcaController.criar);
 router.patch(
   '/:id',

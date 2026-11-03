@@ -34,6 +34,15 @@ const TRANSICOES: Record<StatusPedido, StatusPedido[]> = {
   CANCELADO: [],
 };
 
+// Pedido não pago expira e devolve o estoque (ADR-009). PEDIDO_EXPIRA_MINUTOS=0 desliga.
+export const minutosParaExpirar = () => Number(process.env.PEDIDO_EXPIRA_MINUTOS ?? 30);
+
+function expiraEm(pedido: Pedido): string | null {
+  const minutos = minutosParaExpirar();
+  if (pedido.status !== 'AGUARDANDO_PAGAMENTO' || !(minutos > 0)) return null;
+  return new Date(new Date(pedido.data).getTime() + minutos * 60_000).toISOString();
+}
+
 function dadosDoCliente(pedido: Pedido) {
   const c = pedido.cliente;
   return c ? { id_usuario: c.id_usuario, nome: c.nome, email: c.email, telefone: c.telefone } : null;
@@ -48,6 +57,7 @@ export function paraResposta(pedido: Pedido) {
     status: pedido.status,
     valor_total: Number(pedido.valor_total),
     valor_frete: Number(pedido.valor_frete),
+    expira_em: expiraEm(pedido),
     metodo_envio: pedido.metodo_envio,
     prazo_entrega_dias: pedido.prazo_entrega_dias,
     codigo_rastreio: pedido.codigo_rastreio,
@@ -228,18 +238,20 @@ export async function listarPedidos(usuario: TokenPayload, filtros: FiltrosPedid
   return { dados: rows.map(resumo), pagina: filtros.pagina, limite: filtros.limite, total: count };
 }
 
-export async function buscarPedido(usuario: TokenPayload, id: number) {
+export type AutorDaMudanca = { servico: true } | { servico: false; usuario: TokenPayload };
+
+export async function buscarPedido(autor: AutorDaMudanca, id: number) {
   const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
   if (!pedido) throw new ErroHttp(404, 'Pedido não existe');
 
-  const dono = pedido.cliente?.id_usuario === usuario.id_usuario;
-  if (!dono && !usuario.permissoes.includes(PERMISSAO_VER_TODOS)) {
-    throw new ErroHttp(403, 'Sem permissão para acessar este pedido');
+  if (!autor.servico) {
+    const dono = pedido.cliente?.id_usuario === autor.usuario.id_usuario;
+    if (!dono && !autor.usuario.permissoes.includes(PERMISSAO_VER_TODOS)) {
+      throw new ErroHttp(403, 'Sem permissão para acessar este pedido');
+    }
   }
   return paraResposta(pedido);
 }
-
-export type AutorDaMudanca = { servico: true } | { servico: false; usuario: TokenPayload };
 
 export async function atualizarStatus(id: number, novoStatus: StatusPedido, autor: AutorDaMudanca) {
   const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
@@ -257,11 +269,36 @@ export async function atualizarStatus(id: number, novoStatus: StatusPedido, auto
     throw new ErroHttp(409, `Não é possível mudar o pedido de ${pedido.status} para ${novoStatus}`);
   }
 
-  await pedido.update({ status: novoStatus });
+  // Troca condicional ao status lido: se outra chamada mudou o pedido no meio (ex.: pagamento x expiração),
+  // só uma vence, e só quem vence devolve o estoque.
+  const [alterados] = await Pedido.update(
+    { status: novoStatus },
+    { where: { id_pedido: id, status: pedido.status } }
+  );
+  if (alterados === 0) throw new ErroHttp(409, 'O status do pedido mudou, tente novamente');
+  pedido.status = novoStatus;
 
   if (novoStatus === 'CANCELADO') {
     registrarEvento('pedido_cancelado');
     await devolverEstoque(pedido.itens ?? []);
   }
   return paraResposta(pedido);
+}
+
+// Cancela um pedido que ficou tempo demais sem pagamento. Só age se ele AINDA estiver aguardando pagamento
+// (a troca é condicional), então nunca cancela um pedido pago no meio da corrida.
+export async function expirarPedido(id: number): Promise<boolean> {
+  const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
+  if (!pedido || pedido.status !== 'AGUARDANDO_PAGAMENTO') return false;
+
+  const [alterados] = await Pedido.update(
+    { status: 'CANCELADO' },
+    { where: { id_pedido: id, status: 'AGUARDANDO_PAGAMENTO' } }
+  );
+  if (alterados === 0) return false;
+
+  registrarEvento('pedido_expirado');
+  logger.info({ idPedido: id }, 'pedido expirado por falta de pagamento');
+  await devolverEstoque(pedido.itens ?? []);
+  return true;
 }

@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import * as categoriaService from '../services/categoriaService';
 
-export async function listar(_req: Request, res: Response, next: NextFunction) {
+export async function listar(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await categoriaService.listarCategorias());
+    res.status(200).json(await categoriaService.listarCategorias(req.query.incluirInativos === 'true'));
   } catch (err) {
     next(err);
   }

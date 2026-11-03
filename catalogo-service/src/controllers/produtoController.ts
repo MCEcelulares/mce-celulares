@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as produtoService from '../services/produtoService';
+import * as imagemService from '../services/imagemService';
 
 export async function listar(req: Request, res: Response, next: NextFunction) {
   try {
@@ -27,7 +28,7 @@ export async function recentes(req: Request, res: Response, next: NextFunction) 
 
 export async function buscar(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await produtoService.buscarProduto(Number(req.params.id)));
+    res.status(200).json(await produtoService.buscarProduto(Number(req.params.id), req.query.incluirInativos === 'true'));
   } catch (err) {
     next(err);
   }
@@ -60,6 +61,22 @@ export async function baixarEstoque(req: Request, res: Response, next: NextFunct
 export async function reporEstoque(req: Request, res: Response, next: NextFunction) {
   try {
     res.status(200).json(await produtoService.reporEstoque(Number(req.params.id), req.body.quantidade));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resumo(_req: Request, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json(await produtoService.resumoDoCatalogo());
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function enviarImagem(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json(await imagemService.salvarImagemDoProduto(Number(req.params.id), req.file as Express.Multer.File));
   } catch (err) {
     next(err);
   }

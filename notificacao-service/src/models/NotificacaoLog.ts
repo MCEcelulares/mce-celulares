@@ -9,11 +9,12 @@ interface NotificacaoLogAttributes {
   status: string;
   erro?: string | null;
   enviado_em?: Date | null;
+  criado_em?: Date;
 }
 
 type NotificacaoLogCreationAttributes = Optional<
   NotificacaoLogAttributes,
-  'id_notificacao' | 'status' | 'erro' | 'enviado_em'
+  'id_notificacao' | 'status' | 'erro' | 'enviado_em' | 'criado_em'
 >;
 
 export class NotificacaoLog
@@ -27,6 +28,7 @@ export class NotificacaoLog
   declare status: string;
   declare erro: string | null;
   declare enviado_em: Date | null;
+  declare criado_em: Date;
 }
 
 NotificacaoLog.init(
@@ -38,6 +40,7 @@ NotificacaoLog.init(
     status: { type: DataTypes.STRING(20), defaultValue: 'ENVIADO' },
     erro: { type: DataTypes.STRING(255), allowNull: true },
     enviado_em: { type: DataTypes.DATE, allowNull: true },
+    criado_em: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   },
   { sequelize, modelName: 'NotificacaoLog', tableName: 'notificacao_log', timestamps: false }
 );

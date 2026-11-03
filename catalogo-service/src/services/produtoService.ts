@@ -1,4 +1,4 @@
-import { ForeignKeyConstraintError, Op, literal, Order } from 'sequelize';
+import { ForeignKeyConstraintError, Op, fn, literal, Order } from 'sequelize';
 import { Categoria, Marca, Produto } from '../models';
 import { ErroHttp } from '../middlewares/errorHandler';
 import { apagarCache, gravarCache, lerCache } from '../utils/cache';
@@ -44,7 +44,8 @@ function traduzirErroDeChave(err: unknown): never {
 }
 
 export async function listarProdutos(filtros: FiltrosProduto) {
-  const where: Record<string, unknown> = { ativo: true };
+  // Inativos só aparecem para o painel (a rota exige catalogo:gerenciar quando incluirInativos=true).
+  const where: Record<string, unknown> = filtros.incluirInativos ? {} : { ativo: true };
   if (filtros.categoria) where.id_categoria = filtros.categoria;
   if (filtros.marca) where.id_marca = filtros.marca;
   if (filtros.busca) where.nome = { [Op.like]: `%${escaparLike(filtros.busca)}%` };
@@ -88,7 +89,14 @@ export async function listarRecentes(limite: number) {
   return produtos.map(paraResposta);
 }
 
-export async function buscarProduto(id: number): Promise<ProdutoResposta> {
+export async function buscarProduto(id: number, incluirInativos = false): Promise<ProdutoResposta> {
+  if (incluirInativos) {
+    // Visão do painel: ignora o cache (que só guarda produtos ativos) e mostra também os inativos.
+    const produto = await Produto.findByPk(id, { include: incluir });
+    if (!produto) throw new ErroHttp(404, 'Produto não existe');
+    return paraResposta(produto);
+  }
+
   const emCache = await lerCache<ProdutoResposta>(chaveCache(id));
   if (emCache) return emCache;
 
@@ -159,4 +167,28 @@ export async function reporEstoque(id: number, quantidade: number) {
   registrarEvento('estoque_reposto');
   const atualizado = await Produto.findByPk(id);
   return { id_produto: id, estoque: atualizado!.estoque };
+}
+
+// RF46: contagens do catálogo para o painel (usuários e pedidos saem dos serviços donos desses dados, ADR-012).
+export async function resumoDoCatalogo() {
+  const [total, ativos, semEstoque, emDestaque] = await Promise.all([
+    Produto.count(),
+    Produto.count({ where: { ativo: true } }),
+    Produto.count({ where: { ativo: true, estoque: 0 } }),
+    Produto.count({ where: { ativo: true, destaque: true } }),
+  ]);
+  const estoque = (await Produto.findOne({
+    attributes: [[fn('SUM', literal('preco * estoque')), 'valor']],
+    where: { ativo: true },
+    raw: true,
+  })) as unknown as { valor: string | null } | null;
+
+  return {
+    total_produtos: total,
+    produtos_ativos: ativos,
+    produtos_inativos: total - ativos,
+    produtos_sem_estoque: semEstoque,
+    produtos_em_destaque: emDestaque,
+    valor_em_estoque: Number(estoque?.valor ?? 0),
+  };
 }
