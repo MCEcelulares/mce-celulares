@@ -14,6 +14,10 @@ export const listarProdutosQuerySchema = z
       .enum(['true', 'false'])
       .optional()
       .transform((v) => v === 'true'),
+    incluirInativos: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
     ordenar: z.enum(['recentes', 'preco_asc', 'preco_desc']).default('recentes'),
     pagina: z.coerce.number().int().min(1).default(1),
     limite: z.coerce.number().int().min(1).max(100).default(20),

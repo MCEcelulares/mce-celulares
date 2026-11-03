@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import * as marcaService from '../services/marcaService';
 
-export async function listar(_req: Request, res: Response, next: NextFunction) {
+export async function listar(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await marcaService.listarMarcas());
+    res.status(200).json(await marcaService.listarMarcas(req.query.incluirInativos === 'true'));
   } catch (err) {
     next(err);
   }

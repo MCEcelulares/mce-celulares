@@ -262,6 +262,19 @@ describe('GET /pedidos/:id', () => {
     expect((await api.get('/pedidos/77').set(admin)).status).toBe(200);
   });
 
+  it('o Pagamento (token de serviço) lê qualquer pedido, com valor e cliente', async () => {
+    pedidoMock.findByPk.mockResolvedValue(pedidoCom());
+    const r = await api.get('/pedidos/77').set(servico);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ id_pedido: 77, valor_total: 125, status: 'AGUARDANDO_PAGAMENTO' });
+    expect(r.body.cliente).toMatchObject({ id_usuario: 5, email: 'rafael@mce.test' });
+    expect(JSON.stringify(r.body)).not.toMatch(/52998224725/);
+  });
+
+  it('recusa token de serviço errado', async () => {
+    expect((await api.get('/pedidos/77').set({ Authorization: 'Bearer token-errado' })).status).toBe(401);
+  });
+
   it('responde 404 para pedido inexistente e 400 para id inválido', async () => {
     pedidoMock.findByPk.mockResolvedValue(null);
     expect((await api.get('/pedidos/999').set(cliente)).status).toBe(404);
@@ -275,6 +288,7 @@ describe('PATCH /pedidos/:id/status', () => {
 
   beforeEach(() => {
     reporEstoque.mockResolvedValue(undefined);
+    pedidoMock.update.mockResolvedValue([1]);
   });
 
   it('exige credencial válida (token de serviço ou JWT)', async () => {
@@ -290,7 +304,10 @@ describe('PATCH /pedidos/:id/status', () => {
 
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('PAGO');
-    expect(pedido.update).toHaveBeenCalledWith({ status: 'PAGO' });
+    expect(pedidoMock.update).toHaveBeenCalledWith(
+      { status: 'PAGO' },
+      { where: { id_pedido: 77, status: 'AGUARDANDO_PAGAMENTO' } }
+    );
     expect(r.body.cliente).toMatchObject({ nome: 'Rafael', email: 'rafael@mce.test' });
     expect(r.body.valor_total).toBe(125);
     expect(reporEstoque).not.toHaveBeenCalled();
@@ -301,7 +318,7 @@ describe('PATCH /pedidos/:id/status', () => {
     pedidoMock.findByPk.mockResolvedValue(pedido);
     const r = await patch('PAGO');
     expect(r.status).toBe(200);
-    expect(pedido.update).not.toHaveBeenCalled();
+    expect(pedidoMock.update).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -315,7 +332,7 @@ describe('PATCH /pedidos/:id/status', () => {
     pedidoMock.findByPk.mockResolvedValue(pedido);
     const r = await patch(novo);
     expect(r.status).toBe(409);
-    expect(pedido.update).not.toHaveBeenCalled();
+    expect(pedidoMock.update).not.toHaveBeenCalled();
   });
 
   it('com JWT, exige pedidos:atualizar-status para avançar o pedido', async () => {

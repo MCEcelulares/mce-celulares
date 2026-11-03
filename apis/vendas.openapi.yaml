@@ -1,13 +1,15 @@
 openapi: 3.0.3
 info:
   title: Serviço Vendas — MCEcelulares
-  version: "1.1.0"
+  version: "1.3.0"
   description: >-
     Carrinho, criação e acompanhamento de pedidos. Ao criar o pedido o serviço
     valida usuário e endereço no Identidade (repassando o token do usuário),
     confere preço e estoque no Catálogo, baixa o estoque e publica
     pedido.criado no Redis (contrato no ADR-008). Se algum passo falhar depois
-    de reservar estoque, a reserva é devolvida ao Catálogo.
+    de reservar estoque, a reserva é devolvida ao Catálogo. Pedido sem pagamento
+    expira (PEDIDO_EXPIRA_MINUTOS, padrão 30): é cancelado e o estoque volta ao
+    Catálogo. Há limite de requisições por IP (429).
   license:
     name: UNLICENSED
 servers:
@@ -19,6 +21,8 @@ tags:
     description: Carrinho ativo do usuário logado (um por usuário)
   - name: Pedidos
     description: Criação e consulta de pedidos
+  - name: Painel
+    description: Métricas para o painel administrativo (permissão dashboard:ver)
   - name: Interno
     description: Rotas também usadas por outros serviços (token de serviço)
   - name: Operação
@@ -164,6 +168,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
+        "429":
+          description: Muitos pedidos criados a partir deste IP (20 a cada 15 minutos)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
         "422":
           description: >-
             Carrinho vazio, usuário inválido ou inativo, usuário sem CPF/telefone,
@@ -214,12 +223,71 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
 
+  /pedidos/resumo:
+    get:
+      tags: [Painel]
+      operationId: resumoDoPainel
+      summary: Resumo de pedidos e receita (RF46, RF47)
+      description: >-
+        Exige "dashboard:ver". Receita = pedidos PAGO, ENVIADO e ENTREGUE. Os dias
+        seguem o relógio do banco de dados (UTC no Docker).
+      parameters:
+        - in: query
+          name: dias
+          schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
+          description: Janela do gráfico de receita por dia
+      responses:
+        "200":
+          description: Resumo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResumoDoPainel" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Sem a permissão dashboard:ver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /pedidos/mais-vendidos:
+    get:
+      tags: [Painel]
+      operationId: maisVendidos
+      summary: Produtos mais vendidos (RF18)
+      description: Conta só pedidos que geraram receita (PAGO, ENVIADO, ENTREGUE). Exige "dashboard:ver".
+      parameters:
+        - in: query
+          name: limite
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Produtos por quantidade vendida
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProdutoMaisVendido" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Sem a permissão dashboard:ver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /pedidos/{id}:
     get:
       tags: [Pedidos]
       operationId: buscarPedidoPorId
       summary: Detalhe de um pedido (RF34)
-      description: Permitido ao dono do pedido ou a quem tem "pedidos:listar-todos".
+      description: >-
+        JWT: permitido ao dono do pedido ou a quem tem "pedidos:listar-todos".
+        Token de serviço (SERVICE_TOKEN como Bearer): o Pagamento lê qualquer
+        pedido para conferir valor e dono antes de cobrar.
+      security:
+        - bearerAuth: []
+        - serviceToken: []
       parameters:
         - in: path
           name: id
@@ -297,7 +365,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
         "409":
-          description: Transição de status não permitida
+          description: Transição de status não permitida, ou o pedido mudou de status no meio da chamada (tente de novo)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
@@ -423,6 +491,11 @@ components:
         status: { $ref: "#/components/schemas/StatusPedido" }
         valor_total: { type: number }
         valor_frete: { type: number }
+        expira_em:
+          type: string
+          format: date-time
+          nullable: true
+          description: Até quando o pedido aceita pagamento; null se já não aguarda pagamento ou a expiração está desligada
         metodo_envio: { type: string, nullable: true }
         prazo_entrega_dias: { type: integer, nullable: true }
         codigo_rastreio: { type: string, nullable: true }
@@ -457,6 +530,31 @@ components:
         nome: { type: string }
         email: { type: string }
         telefone: { type: string }
+    ResumoDoPainel:
+      type: object
+      properties:
+        total_pedidos: { type: integer }
+        pedidos_por_status:
+          type: object
+          additionalProperties: { type: integer }
+          description: Uma chave para cada StatusPedido (zero quando não há)
+        pedidos_ultimas_24h: { type: integer }
+        receita_total: { type: number }
+        receita_por_dia:
+          type: array
+          items:
+            type: object
+            properties:
+              dia: { type: string, example: "2026-10-28" }
+              receita: { type: number }
+              pedidos: { type: integer }
+    ProdutoMaisVendido:
+      type: object
+      properties:
+        id_produto: { type: integer, nullable: true }
+        nome_produto: { type: string }
+        quantidade_vendida: { type: integer }
+        receita: { type: number }
     Health:
       type: object
       properties:

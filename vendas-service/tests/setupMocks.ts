@@ -12,8 +12,16 @@ jest.mock('../src/config/database', () => ({
 jest.mock('../src/models', () => ({
   Carrinho: { findOne: jest.fn(), create: jest.fn() },
   ItemCarrinho: { create: jest.fn() },
-  Pedido: { create: jest.fn(), findByPk: jest.fn(), findAndCountAll: jest.fn() },
-  ItemPedido: { bulkCreate: jest.fn() },
+  Pedido: {
+    create: jest.fn(),
+    findByPk: jest.fn(),
+    findAll: jest.fn(),
+    findAndCountAll: jest.fn(),
+    update: jest.fn(),
+    sum: jest.fn(),
+    count: jest.fn(),
+  },
+  ItemPedido: { bulkCreate: jest.fn(), findAll: jest.fn() },
   EnderecoPedido: { create: jest.fn() },
   UsuarioPedido: { create: jest.fn() },
 }));

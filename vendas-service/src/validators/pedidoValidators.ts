@@ -20,3 +20,11 @@ export const atualizarStatusSchema = z.object({
 });
 
 export type FiltrosPedido = z.infer<typeof listarPedidosQuerySchema>;
+
+export const resumoQuerySchema = z.object({
+  dias: z.coerce.number().int().min(1).max(365).default(30),
+});
+
+export const maisVendidosQuerySchema = z.object({
+  limite: z.coerce.number().int().min(1).max(50).default(10),
+});

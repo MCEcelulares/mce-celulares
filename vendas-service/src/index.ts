@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { app } from './app';
 import { sequelize } from './config/database';
 import { redis, aguardarRedis } from './config/redis';
+import { iniciarExpiracaoDePedidos } from './jobs/expirarPedidos';
 import { logger } from './utils/logger';
 import './models';
 
@@ -22,8 +23,11 @@ async function start() {
     logger.info({ porta }, 'vendas-service no ar');
   });
 
+  const rotinaDeExpiracao = iniciarExpiracaoDePedidos();
+
   const encerrar = (sinal: string) => {
     logger.info({ sinal }, 'encerrando');
+    if (rotinaDeExpiracao) clearInterval(rotinaDeExpiracao);
     server.close(async () => {
       await sequelize.close();
       redis.disconnect();

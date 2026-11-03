@@ -3,8 +3,8 @@ import { ErroHttp } from '../middlewares/errorHandler';
 import { z } from 'zod';
 import { atualizarMarcaSchema, criarMarcaSchema } from '../validators/categoriaValidators';
 
-export async function listarMarcas() {
-  return Marca.findAll({ where: { ativo: true }, order: [['nome', 'ASC']] });
+export async function listarMarcas(incluirInativos = false) {
+  return Marca.findAll({ where: incluirInativos ? {} : { ativo: true }, order: [['nome', 'ASC']] });
 }
 
 export async function criarMarca(dados: z.infer<typeof criarMarcaSchema>) {

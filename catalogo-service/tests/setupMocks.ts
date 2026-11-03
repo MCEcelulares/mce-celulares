@@ -13,6 +13,7 @@ jest.mock('../src/models', () => ({
     findByPk: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    count: jest.fn(),
   },
   Categoria: { findAll: jest.fn(), findByPk: jest.fn(), create: jest.fn() },
   Marca: { findAll: jest.fn(), findByPk: jest.fn(), create: jest.fn() },

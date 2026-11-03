@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as categoriaController from '../controllers/categoriaController';
 import { autenticar } from '../middlewares/authMiddleware';
+import { exigirGestorParaInativos } from '../middlewares/inativosMiddleware';
 import { exigirPermissao } from '../middlewares/permissaoMiddleware';
 import { validar } from '../middlewares/validate';
 import { criarCategoriaSchema, atualizarCategoriaSchema } from '../validators/categoriaValidators';
@@ -10,7 +11,7 @@ const router = Router();
 
 const podeGerenciar = exigirPermissao('catalogo:gerenciar');
 
-router.get('/', categoriaController.listar);
+router.get('/', exigirGestorParaInativos, categoriaController.listar);
 router.post('/', autenticar, podeGerenciar, validar(criarCategoriaSchema), categoriaController.criar);
 router.patch(
   '/:id',

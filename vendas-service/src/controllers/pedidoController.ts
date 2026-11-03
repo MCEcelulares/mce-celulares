@@ -24,9 +24,12 @@ export async function listar(req: AuthRequest, res: Response, next: NextFunction
   }
 }
 
-export async function buscar(req: AuthRequest, res: Response, next: NextFunction) {
+export async function buscar(req: ServicoRequest, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await pedidoService.buscarPedido(req.usuarioAutenticado!, Number(req.params.id)));
+    const autor = req.chamadaDeServico
+      ? ({ servico: true } as const)
+      : ({ servico: false, usuario: req.usuarioAutenticado! } as const);
+    res.status(200).json(await pedidoService.buscarPedido(autor, Number(req.params.id)));
   } catch (err) {
     next(err);
   }

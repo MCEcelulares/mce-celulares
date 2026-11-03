@@ -3,8 +3,8 @@ import { ErroHttp } from '../middlewares/errorHandler';
 import { z } from 'zod';
 import { atualizarCategoriaSchema, criarCategoriaSchema } from '../validators/categoriaValidators';
 
-export async function listarCategorias() {
-  return Categoria.findAll({ where: { ativo: true }, order: [['nome', 'ASC']] });
+export async function listarCategorias(incluirInativos = false) {
+  return Categoria.findAll({ where: incluirInativos ? {} : { ativo: true }, order: [['nome', 'ASC']] });
 }
 
 export async function criarCategoria(dados: z.infer<typeof criarCategoriaSchema>) {
