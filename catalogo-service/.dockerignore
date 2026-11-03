@@ -5,3 +5,5 @@ uploads
 .env
 *.pem
 npm-debug.log
+
+uploads

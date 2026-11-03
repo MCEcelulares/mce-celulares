@@ -217,3 +217,41 @@ export async function consultarProdutosInterno(ids: number[]) {
     imagem: urlDaImagem(p.imagem),
   }));
 }
+
+// Devolve estoque (pedido cancelado ou criação de pedido que falhou no meio). Vale também para produto inativo.
+export async function reporEstoque(id: number, quantidade: number) {
+  const [afetadas] = await Produto.update(
+    { estoque: literal(`estoque + ${quantidade}`) as unknown as number },
+    { where: { id_produto: id } }
+  );
+  if (afetadas === 0) throw new ErroHttp(404, 'Produto não existe');
+
+  await apagarCache(chaveCache(id));
+  registrarEvento('estoque_reposto');
+  const atualizado = await Produto.findByPk(id);
+  return { id_produto: id, estoque: atualizado!.estoque };
+}
+
+// RF46: contagens do catálogo para o painel (usuários e pedidos saem dos serviços donos desses dados, ADR-012).
+export async function resumoDoCatalogo() {
+  const [total, ativos, semEstoque, emDestaque] = await Promise.all([
+    Produto.count(),
+    Produto.count({ where: { ativo: true } }),
+    Produto.count({ where: { ativo: true, estoque: 0 } }),
+    Produto.count({ where: { ativo: true, destaque: true } }),
+  ]);
+  const estoque = (await Produto.findOne({
+    attributes: [[fn('SUM', literal('preco * estoque')), 'valor']],
+    where: { ativo: true },
+    raw: true,
+  })) as unknown as { valor: string | null } | null;
+
+  return {
+    total_produtos: total,
+    produtos_ativos: ativos,
+    produtos_inativos: total - ativos,
+    produtos_sem_estoque: semEstoque,
+    produtos_em_destaque: emDestaque,
+    valor_em_estoque: Number(estoque?.valor ?? 0),
+  };
+}

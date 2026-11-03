@@ -13,6 +13,7 @@ import {
   vitrineQuerySchema,
 } from '../validators/produtoValidators';
 import { idParamSchema } from '../validators/paramsValidators';
+import { limitarUpload } from '../utils/rateLimit';
 
 const router = Router();
 
@@ -52,5 +53,13 @@ router.put(
   produtoController.enviarImagem
 );
 router.delete('/:id/imagem', autenticar, validar(idParamSchema, 'params'), podeGerenciar, produtoController.removerImagem);
+
+router.post(
+  '/:id/estoque/reposicao',
+  exigirTokenServico,
+  validar(idParamSchema, 'params'),
+  validar(baixaEstoqueSchema),
+  produtoController.reporEstoque
+);
 
 export default router;

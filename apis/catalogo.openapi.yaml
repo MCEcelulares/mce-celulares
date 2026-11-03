@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
   title: Serviço Catálogo — MCEcelulares
-  version: "1.1.0"
+  version: "1.3.0"
   description: >-
     Produtos, categorias, marcas, busca e filtros. A leitura é pública; criar e
     editar exige a permissão "catalogo:gerenciar" (RBAC do Identidade, ADR-006).
     O detalhe do produto usa cache-aside no Redis (chave produto:{id}) e é
-    invalidado em qualquer alteração. Produtos inativos não aparecem na leitura
+    invalidado em qualquer alteração. Há limite de requisições por IP (429). Produtos inativos não aparecem na leitura
     pública; "excluir" é inativar (PATCH ativo=false).
   license:
     name: UNLICENSED
@@ -21,6 +21,8 @@ tags:
     description: Categorias de produtos
   - name: Marcas
     description: Marcas de produtos
+  - name: Painel
+    description: Métricas para o painel administrativo (permissão dashboard:ver)
   - name: Interno
     description: Rotas chamadas só por outros serviços (token de serviço)
   - name: Operação
@@ -56,6 +58,11 @@ paths:
           name: disponivel
           schema: { type: boolean }
           description: "true = só produtos com estoque maior que zero"
+        - in: query
+          name: incluirInativos
+          schema: { type: boolean, default: false }
+          description: >-
+            "true" inclui itens inativos e exige token com "catalogo:gerenciar" (visão do painel).
         - in: query
           name: ordenar
           schema: { type: string, enum: [recentes, preco_asc, preco_desc], default: recentes }
@@ -103,6 +110,33 @@ paths:
               schema: { $ref: "#/components/schemas/Erro" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
         "403": { $ref: "#/components/responses/SemPermissao" }
+
+  /produtos/resumo:
+    get:
+      tags: [Painel]
+      operationId: resumoDoCatalogo
+      summary: Contagens do catálogo para o painel (RF46)
+      description: Exige "dashboard:ver". Usuários e pedidos saem dos serviços donos desses dados (ADR-012).
+      responses:
+        "200":
+          description: Resumo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_produtos: { type: integer }
+                  produtos_ativos: { type: integer }
+                  produtos_inativos: { type: integer }
+                  produtos_sem_estoque: { type: integer, description: Ativos com estoque zero }
+                  produtos_em_destaque: { type: integer }
+                  valor_em_estoque: { type: number, description: Soma de preço x estoque dos produtos ativos }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Sem a permissão dashboard:ver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
 
   /produtos/destaque:
     get:
@@ -154,7 +188,13 @@ paths:
       tags: [Produtos]
       operationId: buscarProdutoPorId
       summary: Detalhe de um produto ativo (cache-aside via Redis)
+      description: Com incluirInativos=true (e permissão) mostra também produto inativo, sem passar pelo cache.
       security: []
+      parameters:
+        - in: query
+          name: incluirInativos
+          schema: { type: boolean, default: false }
+          description: "true exige token com catalogo:gerenciar"
       responses:
         "200":
           description: Produto encontrado
@@ -194,6 +234,66 @@ paths:
         "403": { $ref: "#/components/responses/SemPermissao" }
         "404":
           description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /produtos/{id}/imagem:
+    post:
+      tags: [Produtos]
+      operationId: enviarImagemDoProduto
+      summary: Envia a imagem do produto (RF15, RNF07)
+      description: >-
+        Exige "catalogo:gerenciar" (checado antes de aceitar o arquivo). multipart/form-data
+        com o arquivo no campo "imagem". Aceita JPEG, PNG e WEBP de até 2 MB; o tipo é
+        conferido pelos bytes do arquivo, não pelo que o cliente declara. O nome do
+        arquivo é gerado pelo servidor. Substitui (e apaga) a imagem anterior enviada por
+        aqui. O arquivo é servido em GET {imagem} (ex.: /catalogo/imagens/{uuid}.png), com
+        cache longo.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [imagem]
+              properties:
+                imagem: { type: string, format: binary }
+      responses:
+        "200":
+          description: Imagem salva
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_produto: { type: integer }
+                  imagem: { type: string, example: /catalogo/imagens/0b7a3c3e-1111-4222-8333-444455556666.png }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "413":
+          description: Imagem maior que 2 MB
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "415":
+          description: Tipo não aceito, ou o conteúdo não é uma imagem JPEG, PNG ou WEBP válida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "429":
+          description: Muitos envios a partir deste IP
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
@@ -251,12 +351,64 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
 
+  /produtos/{id}/estoque/reposicao:
+    post:
+      tags: [Interno]
+      operationId: reporEstoque
+      summary: Devolve estoque — chamada pelo Vendas se a criação do pedido falhar ou se o pedido for cancelado
+      description: >-
+        Mesma autenticação da baixa (token de serviço). Soma a quantidade ao
+        estoque, inclusive de produto inativo.
+      security:
+        - serviceToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantidade]
+              properties:
+                quantidade: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Estoque reposto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_produto: { type: integer }
+                  estoque: { type: integer, description: Saldo depois da reposição }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401":
+          description: Token de serviço ausente ou inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Produto não existe, ou a rota está desligada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /categorias:
     get:
       tags: [Categorias]
       operationId: listarCategorias
       summary: Lista categorias ativas em ordem alfabética
       security: []
+      parameters:
+        - in: query
+          name: incluirInativos
+          schema: { type: boolean, default: false }
+          description: >-
+            "true" inclui itens inativos e exige token com "catalogo:gerenciar" (visão do painel).
       responses:
         "200":
           description: Lista de categorias
@@ -320,6 +472,12 @@ paths:
       operationId: listarMarcas
       summary: Lista marcas ativas em ordem alfabética
       security: []
+      parameters:
+        - in: query
+          name: incluirInativos
+          schema: { type: boolean, default: false }
+          description: >-
+            "true" inclui itens inativos e exige token com "catalogo:gerenciar" (visão do painel).
       responses:
         "200":
           description: Lista de marcas

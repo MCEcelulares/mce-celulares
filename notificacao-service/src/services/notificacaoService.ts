@@ -35,15 +35,23 @@ async function enviarComTentativas(email: Parameters<typeof enviarEmail>[0]) {
 }
 
 // A restrição UNIQUE (id_pedido, tipo) garante que o mesmo e-mail não é enviado duas vezes (ADR-008).
-// Exceção: se a tentativa anterior terminou em FALHA, um evento republicado tenta enviar de novo.
+// Exceções: se a tentativa anterior terminou em FALHA, ou ficou PENDENTE por tempo demais (o processo caiu no meio
+// do envio), um evento republicado tenta enviar de novo.
+// Um envio normal leva segundos (3 tentativas com timeout). PENDENTE por bem mais que isso é um envio que não terminou.
+function pendentePresa(log: NotificacaoLog): boolean {
+  const minutos = Number(process.env.NOTIFICACAO_PENDENTE_MINUTOS ?? 10);
+  if (log.status !== 'PENDENTE' || !log.criado_em) return false;
+  return Date.now() - new Date(log.criado_em).getTime() > minutos * 60_000;
+}
+
 async function registrarTentativa({ idPedido, tipo, destinatario }: Envio) {
   try {
     return await NotificacaoLog.create({ id_pedido: idPedido, tipo, destinatario, status: 'PENDENTE' });
   } catch (err) {
     if (!(err instanceof UniqueConstraintError)) throw err;
     const existente = await NotificacaoLog.findOne({ where: { id_pedido: idPedido, tipo } });
-    if (existente?.status === 'FALHA') {
-      await existente.update({ status: 'PENDENTE', erro: null, destinatario });
+    if (existente && (existente.status === 'FALHA' || pendentePresa(existente))) {
+      await existente.update({ status: 'PENDENTE', erro: null, destinatario, criado_em: new Date() });
       return existente;
     }
     return null;
