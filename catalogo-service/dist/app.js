@@ -1,0 +1,28 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.app = void 0;
+const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
+const routes_1 = __importDefault(require("./routes"));
+const requestLogger_1 = require("./middlewares/requestLogger");
+const errorHandler_1 = require("./middlewares/errorHandler");
+const metricas_1 = require("./utils/metricas");
+const catalogo_1 = require("./config/catalogo");
+exports.app = (0, express_1.default)();
+exports.app.set('trust proxy', 1);
+exports.app.use(requestLogger_1.logarRequisicao);
+exports.app.use(metricas_1.medirRequisicao);
+exports.app.use((0, helmet_1.default)());
+exports.app.use((0, cors_1.default)());
+exports.app.use(express_1.default.json({ limit: '100kb' }));
+exports.app.use('/imagens', (_req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+}, express_1.default.static(catalogo_1.diretorioDeImagens, { maxAge: '7d', immutable: true, index: false, dotfiles: 'ignore' }));
+exports.app.use(routes_1.default);
+exports.app.use(errorHandler_1.rotaNaoEncontrada);
+exports.app.use(errorHandler_1.tratarErros);

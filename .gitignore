@@ -3,3 +3,5 @@ node_modules/
 *.log
 .DS_Store
 keys/*.pem
+# imagens enviadas em desenvolvimento local
+catalogo-service/uploads/

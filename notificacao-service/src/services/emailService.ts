@@ -1,0 +1,47 @@
+import nodemailer from 'nodemailer';
+import 'dotenv/config';
+
+const porta = Number(process.env.SMTP_PORT ?? 587);
+
+const transporte = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: porta,
+  secure: porta === 465,
+  auth: process.env.SMTP_USER
+    ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
+    : undefined,
+  connectionTimeout: 5000,
+  socketTimeout: 10000,
+});
+
+export interface Email {
+  para: string;
+  assunto: string;
+  texto: string;
+  responderPara?: string;
+}
+
+const pausa = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Provedores de SMTP limitam envios por segundo (ex.: Mailtrap grátis responde 550).
+// Os envios saem um por vez, com EMAIL_INTERVALO_MS de pausa entre eles.
+let fila: Promise<unknown> = Promise.resolve();
+
+export function enviarEmail({ para, assunto, texto, responderPara }: Email): Promise<void> {
+  const execucao = fila.then(async () => {
+    try {
+      await transporte.sendMail({
+        from: process.env.EMAIL_REMETENTE ?? 'MCE Celulares <nao-responda@mce.local>',
+        to: para,
+        subject: assunto,
+        text: texto,
+        replyTo: responderPara,
+      });
+    } finally {
+      const intervalo = Number(process.env.EMAIL_INTERVALO_MS ?? 0);
+      if (intervalo > 0) await pausa(intervalo);
+    }
+  });
+  fila = execucao.catch(() => undefined);
+  return execucao;
+}

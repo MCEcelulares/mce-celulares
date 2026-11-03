@@ -1,25 +1,43 @@
 openapi: 3.0.3
 info:
   title: Serviço Pagamento — MCEcelulares
-  version: "1.0.0"
-  description: Processamento e status de pagamento.
+  version: "1.2.0"
+  description: >-
+    Processamento e status de pagamento. O pagamento é feito no Checkout Pro do
+    Mercado Pago: o serviço cria uma preferência com os itens do pedido (RF41,
+    RF42) e devolve o link; a confirmação chega pelo webhook. Ao confirmar, o
+    serviço marca o pedido como PAGO no Vendas e publica pagamento.confirmado
+    no Redis (contrato no ADR-008). Em desenvolvimento pode-se usar o gateway
+    simulado (GATEWAY_PAGAMENTO=simulado), que aprova na hora sem cobrar. O link de
+    pagamento expira junto com o pedido (expira_em do Vendas). Há limite de
+    requisições por IP (429). Roteiro de teste com o Mercado Pago no README do serviço.
   license:
     name: UNLICENSED
 servers:
   - url: /pagamento
 security:
   - bearerAuth: []
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+tags:
+  - name: Pagamentos
+    description: Iniciar e consultar o pagamento de um pedido
+  - name: Webhook
+    description: Notificações do Mercado Pago
+  - name: Operação
+    description: Health checks e métricas
+
 paths:
   /pagamentos:
     post:
+      tags: [Pagamentos]
       operationId: registrarPagamento
-      summary: Registra pagamento de um pedido (atualiza status em Vendas e publica pagamento.confirmado)
+      summary: Inicia o pagamento de um pedido
+      description: >-
+        Só o dono do pedido paga, e o pedido precisa estar AGUARDANDO_PAGAMENTO.
+        O valor enviado deve ser igual ao valor_total do pedido no Vendas.
+        Com o Mercado Pago o pagamento fica PENDENTE e a resposta traz
+        url_pagamento; repetir a chamada devolve o mesmo link enquanto ele
+        estiver em aberto. Depois de um pagamento RECUSADO é possível tentar
+        de novo. Com o gateway simulado a resposta já vem APROVADO.
       requestBody:
         required: true
         content:
@@ -28,21 +46,257 @@ paths:
               type: object
               required: [idPedido, metodoPagamento, valor]
               properties:
-                idPedido: { type: integer }
-                metodoPagamento: { type: string }
-                valor: { type: number }
+                idPedido: { type: integer, minimum: 1 }
+                metodoPagamento:
+                  type: string
+                  maxLength: 50
+                  description: "Informativo (ex.: PIX, CARTAO); no Checkout Pro o cliente escolhe a forma na página do Mercado Pago"
+                valor: { type: number, exclusiveMinimum: true, minimum: 0 }
       responses:
-        "201": { description: Pagamento registrado }
-        "422": { description: Valor não confere com o pedido }
+        "201":
+          description: Pagamento registrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pagamento" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: O pedido é de outro usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Pedido não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Pedido que não está aguardando pagamento, já pago, ou outro pagamento em andamento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "422":
+          description: Valor não confere com o pedido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "502":
+          description: O Mercado Pago recusou a criação do pagamento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503":
+          description: Vendas ou Mercado Pago indisponível, ou gateway não configurado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /pagamentos/{idPedido}:
     get:
+      tags: [Pagamentos]
       operationId: buscarPagamentoPorPedido
       summary: Consulta status de pagamento de um pedido
+      description: Permitido ao dono do pagamento ou a quem tem "pedidos:listar-todos".
       parameters:
         - in: path
           name: idPedido
           required: true
-          schema: { type: integer }
+          schema: { type: integer, minimum: 1 }
       responses:
-        "200": { description: Pagamento encontrado }
-        "404": { description: Nenhum pagamento para esse pedido }
+        "200":
+          description: Pagamento encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pagamento" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: O pagamento é de outro usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Nenhum pagamento para esse pedido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /pagamentos/{idPedido}/sincronizar:
+    post:
+      tags: [Pagamentos]
+      operationId: sincronizarPagamento
+      summary: Confere agora, no Mercado Pago, se o pedido já foi pago (plano B do webhook)
+      description: >-
+        Para quando o webhook não chegou, está atrasado ou não existe (ambiente local sem
+        URL pública), e para o front chamar ao voltar da página do Mercado Pago. Busca os
+        pagamentos com external_reference = id do pedido e aplica a mesma regra do webhook:
+        confirma se houver um aprovado com o valor igual, marca RECUSADO se todos foram
+        recusados ou cancelados, e não faz nada nos demais casos. Já aprovado devolve o
+        pagamento sem consultar o gateway. Permitido ao dono ou a quem tem
+        "pedidos:listar-todos".
+      parameters:
+        - in: path
+          name: idPedido
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Situação do pagamento depois da consulta
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pagamento" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: O pagamento é de outro usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Nenhum pagamento para esse pedido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "429":
+          description: Muitas tentativas a partir deste IP
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503":
+          description: Vendas ou Mercado Pago indisponível, ou gateway não configurado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /pagamentos/webhook:
+    post:
+      tags: [Webhook]
+      operationId: webhookMercadoPago
+      summary: Notificação de pagamento do Mercado Pago
+      description: >-
+        Público (quem chama é o Mercado Pago). O conteúdo NÃO é confiado: o
+        serviço usa só o id do pagamento (data.id, no corpo ou na query string)
+        e consulta GET /v1/payments/{id} na API do Mercado Pago com o token
+        próprio. Só confirma se status = approved e transaction_amount for igual
+        ao valor registrado; rejected/cancelled marcam o pagamento como RECUSADO.
+        Responde 200 quando processou ou não precisa processar (outros tipos de
+        notificação, pagamento desconhecido, valor divergente, pedido que não
+        aceita mais pagamento). Responde 5xx quando Vendas ou Mercado Pago estão
+        fora do ar, para o Mercado Pago repetir a notificação. Repetições não
+        publicam o evento duas vezes.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, example: payment }
+                action: { type: string, example: payment.created }
+                data:
+                  type: object
+                  properties:
+                    id: { type: string, example: "999999999" }
+      responses:
+        "200": { description: Notificação recebida }
+        "503": { description: Dependência indisponível; o Mercado Pago tentará de novo }
+
+  /health/live:
+    get:
+      tags: [Operação]
+      operationId: healthLive
+      summary: Liveness — o processo está vivo
+      security: []
+      responses:
+        "200": { description: Vivo }
+
+  /health:
+    get:
+      tags: [Operação]
+      operationId: healthReady
+      summary: Readiness — banco e Redis
+      description: >-
+        200 com status "ok" ou "degradado" (Redis fora: pagamentos são
+        confirmados, mas o evento pagamento.confirmado não é publicado). 503
+        quando o banco está indisponível.
+      security: []
+      responses:
+        "200":
+          description: Pronto (ok ou degradado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Banco indisponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /metrics:
+    get:
+      tags: [Operação]
+      operationId: metricas
+      summary: Métricas no formato Prometheus
+      description: >-
+        Responde 404 se METRICS_TOKEN não estiver configurado. Exige
+        "Authorization: Bearer METRICS_TOKEN" (diferente do JWT de usuário).
+      security:
+        - metricsToken: []
+      responses:
+        "200":
+          description: Métricas
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { description: Token de métricas ausente ou inválido }
+        "404": { description: Métricas desabilitadas }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: Valor de METRICS_TOKEN (não é um JWT)
+  responses:
+    DadosInvalidos:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+  schemas:
+    Erro:
+      type: object
+      properties:
+        erro: { type: string }
+        detalhes: { type: object }
+    Pagamento:
+      type: object
+      properties:
+        id_pagamento: { type: integer }
+        id_pedido: { type: integer }
+        metodo_pagamento: { type: string }
+        valor: { type: number }
+        status:
+          type: string
+          enum: [PENDENTE, APROVADO, RECUSADO]
+        data_pagamento: { type: string, format: date-time, nullable: true }
+        url_pagamento:
+          type: string
+          nullable: true
+          description: Link do Checkout Pro do Mercado Pago (null no gateway simulado)
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degradado, indisponivel] }
+        servico: { type: string }
+        banco: { type: string, enum: [ok, falha] }
+        redis: { type: string, enum: [ok, falha] }

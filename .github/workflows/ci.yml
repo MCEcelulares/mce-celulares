@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  # Tipagem e testes unitários de cada serviço (não precisam de banco nem de Redis: usam mocks).
+  servicos:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        servico: [notificacao-service, catalogo-service, vendas-service, pagamento-service]
+    defaults:
+      run:
+        working-directory: ${{ matrix.servico }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.servico }}/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx jest --runInBand
+
+  # Os contratos precisam ser YAML válido.
+  contratos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python3 - <<'PY'
+          import glob, yaml
+          arquivos = sorted(glob.glob('apis/*.yaml'))
+          for arquivo in arquivos:
+              with open(arquivo, encoding='utf-8') as f:
+                  yaml.safe_load(f)
+              print('válido:', arquivo)
+          assert arquivos, 'nenhum contrato encontrado'
+          PY
+
+  # Garante que a imagem de cada serviço compila no Linux (pega package-lock fora de sincronia com o `npm ci` do Docker).
+  imagens:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        servico: [notificacao-service, catalogo-service, vendas-service, pagamento-service]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build ./${{ matrix.servico }}

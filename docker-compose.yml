@@ -8,6 +8,7 @@ volumes:
     vendas_db_data:
     pagamento_db_data:
     notificacao_db_data:
+    catalogo_uploads:
 
 services:
     identidade_db:
@@ -39,7 +40,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${CATALOGO_DB_PASSWORD}
         volumes:
           - catalogo_db_data:/var/lib/mysql
-          - ./infra/migrations/catalogo:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${CATALOGO_DB_PASSWORD}"]
           interval: 5s
@@ -58,7 +58,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${VENDAS_DB_PASSWORD}
         volumes:
           - vendas_db_data:/var/lib/mysql
-          - ./infra/migrations/vendas:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${VENDAS_DB_PASSWORD}"]
           interval: 5s
@@ -77,7 +76,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${PAGAMENTO_DB_PASSWORD}
         volumes:
           - pagamento_db_data:/var/lib/mysql
-          - ./infra/migrations/pagamento:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${PAGAMENTO_DB_PASSWORD}"]
           interval: 5s
@@ -96,7 +94,6 @@ services:
             MYSQL_ROOT_PASSWORD: ${NOTIFICACAO_DB_PASSWORD}
         volumes:
           - notificacao_db_data:/var/lib/mysql
-          - ./infra/migrations/notificacao:/docker-entrypoint-initdb.d
         healthcheck:
           test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${NOTIFICACAO_DB_PASSWORD}"]
           interval: 5s
@@ -134,6 +131,85 @@ services:
             RUN_SEEDS: "true"
         depends_on:
             identidade_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    catalogo:
+        build:
+            context: ./catalogo-service
+        container_name: catalogo
+        restart: unless-stopped
+        env_file: ./catalogo-service/.env
+        environment:
+            DB_HOST: catalogo_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+            UPLOADS_DIR: /app/uploads
+        volumes:
+            - catalogo_uploads:/app/uploads
+        depends_on:
+            catalogo_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    vendas:
+        build:
+            context: ./vendas-service
+        container_name: vendas
+        restart: unless-stopped
+        env_file: ./vendas-service/.env
+        environment:
+            DB_HOST: vendas_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            vendas_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    pagamento:
+        build:
+            context: ./pagamento-service
+        container_name: pagamento
+        restart: unless-stopped
+        env_file: ./pagamento-service/.env
+        environment:
+            DB_HOST: pagamento_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            pagamento_db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+          - backend
+
+    notificacao:
+        build:
+            context: ./notificacao-service
+        container_name: notificacao
+        restart: unless-stopped
+        env_file: ./notificacao-service/.env
+        environment:
+            DB_HOST: notificacao_db
+            DB_PORT: "3306"
+            REDIS_URL: redis://redis:6379
+            RUN_MIGRATIONS: "true"
+        depends_on:
+            notificacao_db:
                 condition: service_healthy
             redis:
                 condition: service_healthy
