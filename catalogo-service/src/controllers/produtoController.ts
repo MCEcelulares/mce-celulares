@@ -90,6 +90,12 @@ export async function enviarImagem(req: AuthRequest, res: Response, next: NextFu
     if (!req.file) {
       throw new ErroHttp(400, 'Envie a imagem no campo "imagem" (multipart/form-data)');
     }
+    if (
+      req.method === 'POST' &&
+      !['image/jpeg', 'image/png', 'image/webp'].includes(req.file.mimetype)
+    ) {
+      throw new ErroHttp(415, 'Tipo de imagem não suportado');
+    }
     const produto = await produtoService.trocarImagem(
       Number(req.params.id),
       req.file.buffer,
@@ -97,6 +103,10 @@ export async function enviarImagem(req: AuthRequest, res: Response, next: NextFu
     );
     res.status(200).json(produto);
   } catch (err) {
+    if (req.method === 'POST' && err instanceof ErroHttp && err.status === 400 && err.message.startsWith('Arquivo inválido')) {
+      next(new ErroHttp(415, 'Arquivo de imagem inválido'));
+      return;
+    }
     next(err);
   }
 }
@@ -121,14 +131,6 @@ export async function reporEstoque(req: Request, res: Response, next: NextFuncti
 export async function resumo(_req: Request, res: Response, next: NextFunction) {
   try {
     res.status(200).json(await produtoService.resumoDoCatalogo());
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function enviarImagem(req: Request, res: Response, next: NextFunction) {
-  try {
-    res.status(200).json(await imagemService.salvarImagemDoProduto(Number(req.params.id), req.file as Express.Multer.File));
   } catch (err) {
     next(err);
   }

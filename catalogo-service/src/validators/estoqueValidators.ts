@@ -28,4 +28,8 @@ export const consultarProdutosInternoSchema = z.object({
     ),
 });
 
+export const reporEstoqueSchema = z.object({
+  quantidade: z.number().int().min(1).max(1000000),
+});
+
 export type ReservarEstoqueInput = z.infer<typeof reservarEstoqueSchema>;

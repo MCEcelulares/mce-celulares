@@ -29,8 +29,12 @@ export async function gravarImagem(buffer: Buffer): Promise<string> {
 
 export async function apagarImagem(arquivo: string | null | undefined) {
   if (!arquivo) return;
+  const nome = path.basename(arquivo);
+  if (!/^[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(nome)) return;
+  if (arquivo.includes('/') && !arquivo.startsWith(`${urlBaseDasImagens}/`)) return;
+  if (arquivo.includes('/') && arquivo.slice(`${urlBaseDasImagens}/`.length) !== nome) return;
   try {
-    await fs.unlink(path.join(diretorioDeImagens, path.basename(arquivo)));
+    await fs.unlink(path.join(diretorioDeImagens, nome));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       logger.warn({ arquivo, motivo: (err as Error).message }, 'não foi possível apagar a imagem');

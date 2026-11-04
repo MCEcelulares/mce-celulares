@@ -6,9 +6,22 @@ on:
   pull_request:
 
 jobs:
-  # Tipagem e testes unitários de cada serviço (não precisam de banco nem de Redis: usam mocks).
+  # Tipagem e testes de cada serviço. Os serviços com testes de integração usam o MySQL abaixo.
   servicos:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: catalogo_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +38,20 @@ jobs:
           cache-dependency-path: ${{ matrix.servico }}/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+      - name: Configure integration database
+        if: matrix.servico == 'catalogo-service' || matrix.servico == 'identidade-service'
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "3306"
+          DB_PASSWORD: root
+          DB_NAME: ${{ matrix.servico == 'catalogo-service' && 'catalogo_db' || 'identidade_db' }}
+        run: |
+          node -e "const mysql = require('mysql2/promise'); mysql.createConnection({host: '127.0.0.1', user: 'root', password: 'root'}).then(async c => { await c.query('CREATE DATABASE IF NOT EXISTS ${{ matrix.servico == 'identidade-service' && 'identidade_db' || 'catalogo_db' }}'); await c.end(); })"
+          echo "DB_HOST=$DB_HOST" >> "$GITHUB_ENV"
+          echo "DB_PORT=$DB_PORT" >> "$GITHUB_ENV"
+          echo "DB_PASSWORD=$DB_PASSWORD" >> "$GITHUB_ENV"
+          echo "DB_NAME=$DB_NAME" >> "$GITHUB_ENV"
+          npx sequelize-cli db:migrate
       - run: npx jest --runInBand
 
   # Os contratos precisam ser YAML válido.
