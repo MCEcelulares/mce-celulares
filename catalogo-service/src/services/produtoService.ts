@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { Op, WhereOptions, literal } from 'sequelize';
+import { Op, WhereOptions, fn, literal } from 'sequelize';
 import { Categoria, Marca, Produto } from '../models';
 import { ErroHttp } from '../middlewares/errorHandler';
 import { logger } from '../utils/logger';
@@ -221,12 +221,12 @@ export async function consultarProdutosInterno(ids: number[]) {
 // Devolve estoque (pedido cancelado ou criação de pedido que falhou no meio). Vale também para produto inativo.
 export async function reporEstoque(id: number, quantidade: number) {
   const [afetadas] = await Produto.update(
-    { estoque: literal(`estoque + ${quantidade}`) as unknown as number },
+    { estoque: literal(`estoque + ${Math.trunc(quantidade)}`) },
     { where: { id_produto: id } }
   );
   if (afetadas === 0) throw new ErroHttp(404, 'Produto não existe');
 
-  await apagarCache(chaveCache(id));
+  await invalidarCatalogo();
   registrarEvento('estoque_reposto');
   const atualizado = await Produto.findByPk(id);
   return { id_produto: id, estoque: atualizado!.estoque };

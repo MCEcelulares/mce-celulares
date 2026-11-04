@@ -15,7 +15,11 @@ export function autenticarServico(req: Request, res: Response, next: NextFunctio
     return res.status(503).json({ erro: 'Rotas internas indisponíveis' });
   }
 
-  const recebido = req.headers['x-service-token'];
+  const authorization = req.headers.authorization;
+  const recebidoPorAuthorization = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : undefined;
+  const recebido = recebidoPorAuthorization ?? req.headers['x-service-token'];
   if (typeof recebido !== 'string' || !tokensIguais(recebido, esperado)) {
     logger.warn('rota interna: token de serviço ausente ou inválido');
     return res.status(401).json({ erro: 'Token de serviço inválido' });

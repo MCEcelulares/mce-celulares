@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as produtoController from '../controllers/produtoController';
 import { autenticar, autenticarOpcional } from '../middlewares/authMiddleware';
 import { exigirPermissao } from '../middlewares/permissaoMiddleware';
+import { autenticarServico } from '../middlewares/servicoMiddleware';
 import { validar } from '../middlewares/validate';
 import { receberImagem } from '../middlewares/uploadImagem';
 import { permissaoGerenciar } from '../config/catalogo';
@@ -12,8 +13,8 @@ import {
   listarProdutosQuerySchema,
   vitrineQuerySchema,
 } from '../validators/produtoValidators';
+import { reporEstoqueSchema } from '../validators/estoqueValidators';
 import { idParamSchema } from '../validators/paramsValidators';
-import { limitarUpload } from '../utils/rateLimit';
 
 const router = Router();
 
@@ -56,9 +57,9 @@ router.delete('/:id/imagem', autenticar, validar(idParamSchema, 'params'), podeG
 
 router.post(
   '/:id/estoque/reposicao',
-  exigirTokenServico,
+  autenticarServico,
   validar(idParamSchema, 'params'),
-  validar(baixaEstoqueSchema),
+  validar(reporEstoqueSchema),
   produtoController.reporEstoque
 );
 

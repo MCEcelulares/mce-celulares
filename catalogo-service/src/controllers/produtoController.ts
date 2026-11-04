@@ -125,11 +125,3 @@ export async function resumo(_req: Request, res: Response, next: NextFunction) {
     next(err);
   }
 }
-
-export async function enviarImagem(req: Request, res: Response, next: NextFunction) {
-  try {
-    res.status(200).json(await imagemService.salvarImagemDoProduto(Number(req.params.id), req.file as Express.Multer.File));
-  } catch (err) {
-    next(err);
-  }
-}
