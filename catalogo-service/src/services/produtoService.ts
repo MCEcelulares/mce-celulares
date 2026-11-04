@@ -25,22 +25,31 @@ const ordenacoes: Record<ListarProdutosQuery['ordenar'], [string, string][]> = {
 };
 
 function paraResposta(produto: Produto) {
+  const registro: Record<string, unknown> =
+    typeof (produto as Produto & { toJSON?: () => Record<string, unknown> }).toJSON === 'function'
+      ? ((produto as Produto & { toJSON: () => Record<string, unknown> }).toJSON() as unknown as Record<string, unknown>)
+      : (produto as unknown as Record<string, unknown>);
   return {
-    id_produto: produto.id_produto,
-    nome: produto.nome,
-    descricao: produto.descricao,
-    preco: Number(produto.preco),
-    estoque: produto.estoque,
-    imagem: urlDaImagem(produto.imagem),
-    destaque: produto.destaque,
-    ativo: produto.ativo,
-    id_marca: produto.id_marca,
-    id_categoria: produto.id_categoria,
-    marca: produto.marca ? { id_marca: produto.marca.id_marca, nome: produto.marca.nome } : null,
-    categoria: produto.categoria
-      ? { id_categoria: produto.categoria.id_categoria, nome: produto.categoria.nome }
+    id_produto: registro.id_produto,
+    nome: registro.nome,
+    descricao: registro.descricao,
+    preco: Number(registro.preco),
+    estoque: registro.estoque,
+    imagem: urlDaImagem(registro.imagem as string | null | undefined),
+    destaque: registro.destaque,
+    ativo: registro.ativo,
+    id_marca: registro.id_marca,
+    id_categoria: registro.id_categoria,
+    marca: registro.marca
+      ? { id_marca: (registro.marca as Marca).id_marca, nome: (registro.marca as Marca).nome }
       : null,
-    criado_em: produto.criado_em,
+    categoria: registro.categoria
+      ? {
+          id_categoria: (registro.categoria as Categoria).id_categoria,
+          nome: (registro.categoria as Categoria).nome,
+        }
+      : null,
+    criado_em: registro.criado_em,
   };
 }
 
@@ -78,8 +87,9 @@ export async function listarProdutos(filtros: ListarProdutosQuery, verInativos: 
       condicoes.push({ nome: { [Op.like]: `%${escaparLike(palavra)}%` } });
     }
 
+    const where = condicoes.length === 0 ? {} : condicoes.length === 1 ? condicoes[0] : { [Op.and]: condicoes };
     const { rows, count } = await Produto.findAndCountAll({
-      where: { [Op.and]: condicoes },
+      where,
       include: incluirRelacionados,
       order: ordenacoes[criterios.ordenar],
       limit: criterios.limite,

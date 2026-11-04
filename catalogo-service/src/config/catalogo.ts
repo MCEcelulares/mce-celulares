@@ -3,7 +3,7 @@ import 'dotenv/config';
 
 export const permissaoGerenciar = 'catalogo:gerenciar';
 
-export const tamanhoMaximoImagem = 5 * 1024 * 1024;
+export const tamanhoMaximoImagem = 2 * 1024 * 1024;
 export const extensaoPorTipoDeImagem = { jpg: 'jpg', png: 'png', webp: 'webp' } as const;
 
 export const diretorioDeImagens = path.resolve(process.env.UPLOAD_DIR ?? 'uploads');

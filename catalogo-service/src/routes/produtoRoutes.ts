@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as produtoController from '../controllers/produtoController';
-import { autenticar, autenticarOpcional } from '../middlewares/authMiddleware';
-import { exigirPermissao } from '../middlewares/permissaoMiddleware';
+import { autenticar, autenticarOpcional, autenticarSeIncluirInativos } from '../middlewares/authMiddleware';
+import { exigirPermissao, exigirPermissaoSeIncluirInativos } from '../middlewares/permissaoMiddleware';
 import { autenticarServico } from '../middlewares/servicoMiddleware';
 import { validar } from '../middlewares/validate';
 import { receberImagem } from '../middlewares/uploadImagem';
@@ -19,11 +19,27 @@ import { idParamSchema } from '../validators/paramsValidators';
 const router = Router();
 
 const podeGerenciar = exigirPermissao(permissaoGerenciar);
+const podeVerPainel = exigirPermissao('dashboard:ver');
+const podeGerenciarInativos = exigirPermissaoSeIncluirInativos(permissaoGerenciar);
 
-router.get('/', autenticarOpcional, validar(listarProdutosQuerySchema, 'query'), produtoController.listar);
+router.get(
+  '/',
+  autenticarSeIncluirInativos,
+  autenticarOpcional,
+  validar(listarProdutosQuerySchema, 'query'),
+  produtoController.listar
+);
 router.get('/destaque', validar(vitrineQuerySchema, 'query'), produtoController.destaques);
 router.get('/recentes', validar(vitrineQuerySchema, 'query'), produtoController.recentes);
-router.get('/:id', autenticarOpcional, validar(idParamSchema, 'params'), produtoController.buscar);
+router.get('/resumo', autenticar, podeVerPainel, produtoController.resumo);
+router.get(
+  '/:id',
+  autenticarSeIncluirInativos,
+  autenticarOpcional,
+  validar(idParamSchema, 'params'),
+  podeGerenciarInativos,
+  produtoController.buscar
+);
 
 router.post('/', autenticar, podeGerenciar, validar(criarProdutoSchema), produtoController.criar);
 router.patch(
@@ -46,6 +62,14 @@ router.patch(
 );
 
 router.put(
+  '/:id/imagem',
+  autenticar,
+  validar(idParamSchema, 'params'),
+  podeGerenciar,
+  receberImagem,
+  produtoController.enviarImagem
+);
+router.post(
   '/:id/imagem',
   autenticar,
   validar(idParamSchema, 'params'),
