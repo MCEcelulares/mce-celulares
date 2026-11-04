@@ -10,12 +10,12 @@ const api = request(app);
 const produtoMock = Produto as unknown as Record<string, jest.Mock>;
 const categoriaMock = Categoria as unknown as Record<string, jest.Mock>;
 const marcaMock = Marca as unknown as Record<string, jest.Mock>;
-const pasta = process.env.UPLOADS_DIR as string;
+const pasta = process.env.UPLOAD_DIR as string;
 
 const token = (permissoes: string[]) =>
   jwt.sign(
     { id_usuario: 1, email: 'a@mce.test', admin: false, cargos: [], permissoes },
-    process.env.TESTE_JWT_PRIVATE_KEY as string,
+    process.env.JWT_PRIVATE_KEY_TESTE as string,
     { algorithm: 'RS256', expiresIn: '1h' }
   );
 const admin = { Authorization: `Bearer ${token(['catalogo:gerenciar'])}` };
