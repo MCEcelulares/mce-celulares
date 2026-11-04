@@ -109,27 +109,3 @@ export async function removerImagem(req: AuthRequest, res: Response, next: NextF
     next(err);
   }
 }
-
-export async function reporEstoque(req: Request, res: Response, next: NextFunction) {
-  try {
-    res.status(200).json(await produtoService.reporEstoque(Number(req.params.id), req.body.quantidade));
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function resumo(_req: Request, res: Response, next: NextFunction) {
-  try {
-    res.status(200).json(await produtoService.resumoDoCatalogo());
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function enviarImagem(req: Request, res: Response, next: NextFunction) {
-  try {
-    res.status(200).json(await imagemService.salvarImagemDoProduto(Number(req.params.id), req.file as Express.Multer.File));
-  } catch (err) {
-    next(err);
-  }
-}
