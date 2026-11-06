@@ -94,23 +94,63 @@ function resumo(pedido: Pedido) {
   };
 }
 
-interface ItemParaDevolver {
-  id_produto: number | null;
-  quantidade: number;
+// Devolve ao Catálogo a reserva do pedido (idempotente e repetida em falha de rede, ver catalogoClient).
+// Se mesmo assim falhar, o pedido continua cancelado e a falha fica em log e na métrica para conciliação.
+async function devolverReservaDoPedido(idPedido: number) {
+  try {
+    await catalogo.devolverReserva(idPedido);
+  } catch (err) {
+    registrarEvento('estoque_nao_devolvido');
+    logger.error({ err, idPedido }, 'reserva de estoque não devolvida ao Catálogo');
+  }
 }
 
-// Devolução é "melhor esforço": uma falha é registrada (para conciliar à mão) e nunca repete a devolução
-// dos itens que já voltaram, o que criaria estoque fantasma.
-async function devolverEstoque(itens: ItemParaDevolver[]) {
-  for (const item of itens) {
-    if (item.id_produto === null) continue;
-    try {
-      await catalogo.reporEstoque(item.id_produto, item.quantidade);
-    } catch (err) {
-      registrarEvento('estoque_nao_devolvido');
-      logger.error({ err, id_produto: item.id_produto, quantidade: item.quantidade }, 'estoque não devolvido ao Catálogo');
-    }
+// Apaga um pedido que nunca chegou a ficar visível (ativo=false): itens, endereço, cliente e o próprio pedido.
+async function descartarPedido(idPedido: number) {
+  await sequelize.transaction(async (transaction) => {
+    await ItemPedido.destroy({ where: { id_pedido: idPedido }, transaction });
+    await EnderecoPedido.destroy({ where: { id_pedido: idPedido }, transaction });
+    await UsuarioPedido.destroy({ where: { id_pedido: idPedido }, transaction });
+    await Pedido.destroy({ where: { id_pedido: idPedido, ativo: false }, transaction });
+  });
+}
+
+// Usado quando a criação já falhou: o erro original é o que importa, então uma falha aqui só vira log.
+// O pedido fica invisível no banco (ativo=false) para a recuperação de órfãos tratar depois.
+async function descartarPedidoSemFalhar(idPedido: number) {
+  try {
+    await descartarPedido(idPedido);
+  } catch (err) {
+    logger.error({ err, idPedido }, 'não foi possível apagar o pedido que não chegou a ser criado');
   }
+}
+
+// Prazo para considerar "órfão" um pedido que nunca ficou visível (a criação caiu no meio). Vale também com a expiração desligada.
+export const minutosParaOrfao = () => Number(process.env.PEDIDO_ORFAO_MINUTOS ?? 10);
+
+// Recupera um pedido invisível antigo: devolve a reserva (se existir) e apaga o pedido. Se a devolução falhar,
+// lança o erro e o pedido fica para a próxima rodada (a reserva só é perdida se o pedido for apagado antes).
+export async function recuperarPedidoOrfao(id: number): Promise<boolean> {
+  const pedido = await Pedido.findByPk(id);
+  if (!pedido || pedido.ativo) return false;
+
+  await catalogo.devolverReserva(id);
+  await descartarPedido(id);
+  registrarEvento('pedido_orfao_recuperado');
+  logger.warn({ idPedido: id }, 'pedido órfão recuperado: reserva devolvida e pedido apagado');
+  return true;
+}
+
+// Traduz a recusa do Catálogo na resposta ao cliente.
+function erroDaReserva(resultado: Exclude<catalogo.ResultadoReserva, { tipo: 'ok' }>, nomes: Map<number, string>) {
+  if (resultado.tipo === 'sem_estoque') {
+    const faltas = resultado.faltas
+      .map((f) => `"${nomes.get(f.id_produto) ?? f.id_produto}" (disponível: ${f.disponivel})`)
+      .join(', ');
+    return new ErroHttp(409, `Estoque insuficiente para ${faltas}`);
+  }
+  if (resultado.status === 404) return new ErroHttp(422, 'Algum produto do carrinho não está mais disponível');
+  return new ErroHttp(409, resultado.mensagem);
 }
 
 export async function criarPedido(usuario: TokenPayload, authorization: string, idEndereco: number) {
@@ -144,61 +184,85 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
   const valorFrete = 0; // frete ainda não é calculado (sem regra definida no projeto)
   const valorTotal = (linhas.reduce((soma, l) => soma + centavos(l.preco) * l.quantidade, 0) + centavos(valorFrete)) / 100;
 
-  const reservados: ItemParaDevolver[] = [];
-  let idPedido: number;
-  try {
-    for (const linha of linhas) {
-      const resultado = await catalogo.baixarEstoque(linha.id_produto, linha.quantidade);
-      if (resultado !== 'ok') {
-        throw new ErroHttp(409, `Estoque insuficiente para "${linha.nome}"`);
-      }
-      reservados.push({ id_produto: linha.id_produto, quantidade: linha.quantidade });
-    }
+  // 1) grava o pedido INVISÍVEL (ativo=false): o Catálogo reserva por id de pedido, então ele precisa existir antes.
+  const idPedido = await sequelize.transaction(async (transaction) => {
+    const pedido = await Pedido.create(
+      { valor_total: valorTotal, valor_frete: valorFrete, status: 'AGUARDANDO_PAGAMENTO', ativo: false },
+      { transaction }
+    );
+    await ItemPedido.bulkCreate(
+      linhas.map((l) => ({
+        id_pedido: pedido.id_pedido,
+        id_produto: l.id_produto,
+        nome_produto: l.nome.slice(0, 150),
+        quantidade: l.quantidade,
+        preco_unitario: l.preco,
+      })),
+      { transaction }
+    );
+    await EnderecoPedido.create(
+      {
+        id_pedido: pedido.id_pedido,
+        endereco: endereco.endereco,
+        numero: endereco.numero,
+        complemento: endereco.complemento,
+        bairro: endereco.bairro,
+        cidade: endereco.cidade,
+        estado: endereco.estado,
+        cep: endereco.cep,
+      },
+      { transaction }
+    );
+    await UsuarioPedido.create(
+      {
+        id_pedido: pedido.id_pedido,
+        id_usuario: idUsuario,
+        nome: perfil.nome,
+        email: perfil.email,
+        cpf: perfil.cpf as string,
+        telefone: perfil.telefone as string,
+      },
+      { transaction }
+    );
+    return pedido.id_pedido;
+  });
 
-    idPedido = await sequelize.transaction(async (transaction) => {
-      const pedido = await Pedido.create(
-        { valor_total: valorTotal, valor_frete: valorFrete, status: 'AGUARDANDO_PAGAMENTO' },
-        { transaction }
-      );
-      await ItemPedido.bulkCreate(
-        linhas.map((l) => ({
-          id_pedido: pedido.id_pedido,
-          id_produto: l.id_produto,
-          nome_produto: l.nome.slice(0, 150),
-          quantidade: l.quantidade,
-          preco_unitario: l.preco,
-        })),
-        { transaction }
-      );
-      await EnderecoPedido.create(
-        {
-          id_pedido: pedido.id_pedido,
-          endereco: endereco.endereco,
-          numero: endereco.numero,
-          complemento: endereco.complemento,
-          bairro: endereco.bairro,
-          cidade: endereco.cidade,
-          estado: endereco.estado,
-          cep: endereco.cep,
-        },
-        { transaction }
-      );
-      await UsuarioPedido.create(
-        {
-          id_pedido: pedido.id_pedido,
-          id_usuario: idUsuario,
-          nome: perfil.nome,
-          email: perfil.email,
-          cpf: perfil.cpf as string,
-          telefone: perfil.telefone as string,
-        },
-        { transaction }
-      );
+  // 2) reserva o estoque de todos os itens de uma vez (tudo ou nada). Sem reserva, o pedido invisível é apagado.
+  let reserva: catalogo.ResultadoReserva;
+  try {
+    reserva = await catalogo.reservarEstoque(
+      idPedido,
+      linhas.map((l) => ({ id_produto: l.id_produto, quantidade: l.quantidade }))
+    );
+  } catch (err) {
+    // Catálogo fora do ar ou resposta inesperada: a reserva pode ou não ter sido feita, então não apagamos o
+    // pedido sem antes tentar devolver. Se a devolução falhar, ele fica invisível para a recuperação de órfãos.
+    try {
+      await catalogo.devolverReserva(idPedido);
+      await descartarPedidoSemFalhar(idPedido);
+    } catch (erroDevolucao) {
+      logger.error({ err: erroDevolucao, idPedido }, 'reserva incerta: pedido invisível mantido para recuperação');
+    }
+    throw err;
+  }
+  if (reserva.tipo !== 'ok') {
+    await descartarPedidoSemFalhar(idPedido);
+    throw erroDaReserva(reserva, new Map(linhas.map((l) => [l.id_produto, l.nome])));
+  }
+
+  // 3) torna o pedido visível e encerra o carrinho na mesma transação.
+  try {
+    await sequelize.transaction(async (transaction) => {
+      await Pedido.update({ ativo: true }, { where: { id_pedido: idPedido }, transaction });
       await carrinho.update({ ativo: false }, { transaction });
-      return pedido.id_pedido;
     });
   } catch (err) {
-    await devolverEstoque(reservados);
+    try {
+      await catalogo.devolverReserva(idPedido);
+      await descartarPedidoSemFalhar(idPedido);
+    } catch (erroDevolucao) {
+      logger.error({ err: erroDevolucao, idPedido }, 'reserva não devolvida: pedido invisível mantido para recuperação');
+    }
     throw err;
   }
 
@@ -280,7 +344,7 @@ export async function atualizarStatus(id: number, novoStatus: StatusPedido, auto
 
   if (novoStatus === 'CANCELADO') {
     registrarEvento('pedido_cancelado');
-    await devolverEstoque(pedido.itens ?? []);
+    await devolverReservaDoPedido(id);
   }
   return paraResposta(pedido);
 }
@@ -299,6 +363,6 @@ export async function expirarPedido(id: number): Promise<boolean> {
 
   registrarEvento('pedido_expirado');
   logger.info({ idPedido: id }, 'pedido expirado por falta de pagamento');
-  await devolverEstoque(pedido.itens ?? []);
+  await devolverReservaDoPedido(id);
   return true;
 }

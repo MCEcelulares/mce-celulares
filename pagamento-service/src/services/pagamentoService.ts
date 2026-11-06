@@ -8,7 +8,7 @@ import { TokenPayload } from '../utils/jwt';
 import { publicarPagamentoConfirmado } from '../utils/eventos';
 import { registrarEvento } from '../utils/metricas';
 import { logger } from '../utils/logger';
-import { RegistrarPagamento } from '../validators/pagamentoValidators';
+import { RegistrarPagamento, FiltrosPagamento } from '../validators/pagamentoValidators';
 
 const PERMISSAO_VER_TODOS = 'pedidos:listar-todos';
 
@@ -29,11 +29,11 @@ export function paraResposta(pagamento: Pagamento) {
 // Confirma o pagamento: avisa o Vendas (fonte da verdade do status), marca como APROVADO e publica o evento.
 // Pode ser chamada de novo (webhook repetido): o Vendas aceita repetir PAGO e só a primeira chamada
 // consegue "reivindicar" a mudança para APROVADO, então o evento sai uma única vez.
-async function confirmar(pagamento: Pagamento) {
+async function confirmar(pagamento: Pagamento, idGateway: string | null = null) {
   const pedido = await vendas.atualizarStatus(pagamento.id_pedido, 'PAGO');
 
   const [reivindicado] = await Pagamento.update(
-    { status: 'APROVADO', data_pagamento: new Date() },
+    { status: 'APROVADO', data_pagamento: new Date(), id_pagamento_gateway: idGateway },
     { where: { id_pagamento: pagamento.id_pagamento, status: { [Op.ne]: 'APROVADO' } } }
   );
   if (reivindicado === 0) return;
@@ -51,6 +51,30 @@ async function confirmar(pagamento: Pagamento) {
     metodoPagamento: pagamento.metodo_pagamento,
     cliente: { nome: pedido.cliente.nome, email: pedido.cliente.email },
   });
+}
+
+// Visão do operador: inclui o id do pagamento no gateway (para reembolsar). Nunca expõe o link de pagamento.
+function paraRespostaOperador(pagamento: Pagamento) {
+  return {
+    id_pagamento: pagamento.id_pagamento,
+    id_pedido: pagamento.id_pedido,
+    metodo_pagamento: pagamento.metodo_pagamento,
+    valor: Number(pagamento.valor),
+    status: pagamento.status,
+    data_pagamento: pagamento.data_pagamento,
+    id_pagamento_gateway: pagamento.id_pagamento_gateway,
+  };
+}
+
+// A rota exige a permissão pedidos:listar-todos (ver pagamentoRoutes).
+export async function listarPagamentos(filtros: FiltrosPagamento) {
+  const { rows, count } = await Pagamento.findAndCountAll({
+    where: filtros.status ? { status: filtros.status } : {},
+    order: [['id_pagamento', 'DESC']],
+    limit: filtros.limite,
+    offset: (filtros.pagina - 1) * filtros.limite,
+  });
+  return { dados: rows.map(paraRespostaOperador), pagina: filtros.pagina, limite: filtros.limite, total: count };
 }
 
 export async function registrarPagamento(usuario: TokenPayload, dados: RegistrarPagamento) {
@@ -135,6 +159,18 @@ function ignorar(motivo: string, extra: object = {}) {
 
 const FALHAS_DO_GATEWAY = ['rejected', 'cancelled'];
 
+// Nunca sobrescreve um pagamento já APROVADO (a troca é condicional).
+async function marcarParaReembolso(pagamento: Pagamento, idGateway: string | null) {
+  const [alterados] = await Pagamento.update(
+    { status: 'REEMBOLSAR', id_pagamento_gateway: idGateway },
+    { where: { id_pagamento: pagamento.id_pagamento, status: { [Op.ne]: 'APROVADO' } } }
+  );
+  if (alterados > 0) {
+    pagamento.status = 'REEMBOLSAR';
+    registrarEvento('pagamento_a_reembolsar');
+  }
+}
+
 // Regra única de decisão, usada pelo webhook e pela sincronização: dado o que o gateway diz sobre um pagamento,
 // confirma, recusa ou não faz nada.
 async function aplicarResultado(pagamento: Pagamento, info: PagamentoExterno) {
@@ -147,10 +183,12 @@ async function aplicarResultado(pagamento: Pagamento, info: PagamentoExterno) {
       return;
     }
     try {
-      await confirmar(pagamento);
+      await confirmar(pagamento, info.id || null);
     } catch (err) {
-      // O gateway aprovou, mas o Vendas não aceita (ex.: pedido cancelado): repetir não adianta, exige reembolso manual.
+      // O gateway aprovou, mas o Vendas não aceita (ex.: pedido cancelado): repetir não adianta. O pagamento fica
+      // marcado como REEMBOLSAR, com o id do gateway, para o operador devolver o dinheiro (o reembolso é manual).
       if (err instanceof ErroHttp && (err.status === 404 || err.status === 409)) {
+        await marcarParaReembolso(pagamento, info.id || null);
         registrarEvento('pagamento_pedido_nao_pagavel');
         logger.error({ idPedido, motivo: err.message }, 'pagamento aprovado para pedido que não aceita pagamento (reembolsar)');
         return;

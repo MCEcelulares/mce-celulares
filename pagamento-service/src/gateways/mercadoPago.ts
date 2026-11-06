@@ -12,6 +12,7 @@ interface RespostaPreferencia {
 }
 
 interface RespostaPagamento {
+  id?: number | string;
   status: string;
   external_reference?: string | null;
   transaction_amount: number;
@@ -22,6 +23,7 @@ interface RespostaBusca {
 }
 
 const paraPagamentoExterno = (p: RespostaPagamento): PagamentoExterno => ({
+  id: String(p.id ?? ''),
   status: p.status,
   externalReference: p.external_reference ?? null,
   valor: Number(p.transaction_amount),

@@ -3,6 +3,7 @@ import { app } from './app';
 import { sequelize } from './config/database';
 import { redisAssinante } from './config/redis';
 import { iniciarAssinante } from './services/assinanteService';
+import { iniciarReenvioDeNotificacoes } from './jobs/reenviarNotificacoes';
 import { logger } from './utils/logger';
 import './models';
 
@@ -18,6 +19,7 @@ async function start() {
   }
 
   iniciarAssinante().catch((err) => logger.error({ err }, 'falha ao assinar canais de eventos'));
+  const rotinaDeReenvio = iniciarReenvioDeNotificacoes();
 
   const server = app.listen(porta, () => {
     logger.info({ porta }, 'notificacao-service no ar');
@@ -25,6 +27,7 @@ async function start() {
 
   const encerrar = (sinal: string) => {
     logger.info({ sinal }, 'encerrando');
+    clearInterval(rotinaDeReenvio);
     server.close(async () => {
       await sequelize.close();
       redisAssinante.disconnect();

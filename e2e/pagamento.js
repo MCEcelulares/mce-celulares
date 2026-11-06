@@ -40,6 +40,18 @@ async function executar() {
   ok((await req('GET', '/pagamento/pagamentos/99999999', null, c1.token)).s === 404, 'pedido sem pagamento -> 404');
   ok((await pagar(corpo, c1.token)).s === 409, 'pagar de novo um pedido PAGO -> 409');
 
+  // visão do operador: lista de pagamentos (o REEMBOLSAR em si não dá para provocar com o gateway simulado: é coberto
+  // pelos testes unitários; aqui marcamos o pagamento deste teste direto no banco só para conferir a listagem)
+  ok((await req('GET', '/pagamento/pagamentos', null, c1.token)).s === 403, 'listar pagamentos sem permissão -> 403');
+  r = await req('GET', '/pagamento/pagamentos?status=APROVADO&limite=100', null, admin);
+  ok(r.s === 200 && r.b.dados.some((p) => p.id_pedido === pedido.id_pedido && p.status === 'APROVADO'), 'operador lista pagamentos por status');
+  ok(r.s === 200 && !JSON.stringify(r.b).includes('url_pagamento'), 'a listagem não expõe o link de pagamento');
+  c.sql('pagamento', `UPDATE pagamento SET status = 'REEMBOLSAR', id_pagamento_gateway = 'e2e-123' WHERE id_pedido = ${pedido.id_pedido}`);
+  r = await req('GET', '/pagamento/pagamentos?status=REEMBOLSAR&limite=100', null, admin);
+  ok(r.s === 200 && r.b.dados.some((p) => p.id_pedido === pedido.id_pedido && p.id_pagamento_gateway === 'e2e-123'), 'operador lista os pagamentos a reembolsar, com o id do gateway');
+  c.sql('pagamento', `UPDATE pagamento SET status = 'APROVADO', id_pagamento_gateway = NULL WHERE id_pedido = ${pedido.id_pedido}`);
+  ok((await req('GET', '/pagamento/pagamentos?status=XPTO', null, admin)).s === 400, 'status inválido na listagem -> 400');
+
   // plano B do webhook
   const sincronizar = (token, id = pedido.id_pedido) => req('POST', `/pagamento/pagamentos/${id}/sincronizar`, null, token);
   ok((await sincronizar(null)).s === 401, 'sincronizar sem token -> 401');
@@ -63,6 +75,19 @@ async function executar() {
   const tipos = (logs ?? []).map((x) => `${x.tipo}:${x.status}`).sort();
   ok(tipos.join() === 'PAGAMENTO_CONFIRMADO:ENVIADO,PEDIDO_CRIADO:ENVIADO', `e-mails pelo Notificação: ${JSON.stringify(tipos)}`);
   ok((logs ?? []).every((x) => x.destinatario === c1.email), 'enviados para o e-mail do cliente');
+
+  // reenvio automático: marca o e-mail do pedido como FALHA (como se o SMTP tivesse caído) e espera a rotina refazer
+  c.sql('notificacao', `UPDATE notificacao_log SET status = 'FALHA', erro = 'teste e2e', tentativas = 1, enviado_em = NULL, criado_em = NOW() - INTERVAL 10 MINUTE WHERE id_pedido = ${pedido.id_pedido} AND tipo = 'PEDIDO_CRIADO'`);
+  const reenviado = await c.aguardar(
+    async () => {
+      const l = await req('GET', `/notificacao/logs/${pedido.id_pedido}`, null, admin);
+      const x = l.b?.find?.((n) => n.tipo === 'PEDIDO_CRIADO');
+      return x && x.status === 'ENVIADO' && x.tentativas >= 2 ? x : null;
+    },
+    { tentativas: 14, intervaloMs: 8000 }
+  );
+  ok(!!reenviado, `e-mail que falhou foi reenviado sozinho (rodadas: ${reenviado?.tentativas})`);
+  ok(!!reenviado && reenviado.texto === undefined, 'a consulta de logs não expõe o texto do e-mail');
 
   // painel (RF18, RF46, RF47) com este pedido pago
   ok((await req('GET', '/vendas/pedidos/resumo', null, c1.token)).s === 403, 'resumo sem dashboard:ver -> 403');

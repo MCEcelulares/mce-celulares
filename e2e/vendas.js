@@ -105,9 +105,25 @@ async function executar() {
   // estoque insuficiente com mais de um item e compensação
   await req('POST', '/vendas/carrinho/itens', { idProduto: C.id_produto, quantidade: 3 }, c1.token);
   await req('POST', '/vendas/carrinho/itens', { idProduto: B.id_produto, quantidade: 1 }, c1.token);
-  await req('PATCH', `/catalogo/produtos/${B.id_produto}`, { estoque: 0 }, admin);
+  await req('PATCH', `/catalogo/produtos/${B.id_produto}/estoque`, { ajuste: -1 }, admin);
   r = await req('POST', '/vendas/pedidos', { idEndereco: c1.idEndereco }, c1.token);
   ok(r.s === 409 && (await c.estoqueDe(C)) === 3, `item sem estoque recusa o pedido sem prender o estoque dos outros (C continua 3) -> ${r.s}`);
+
+  // pedido órfão: a reserva foi feita, mas o processo caiu antes de o pedido ficar visível. A rotina de recuperação
+  // devolve a reserva ao Catálogo e apaga o pedido.
+  const c3 = await c.novoCliente('tres');
+  await req('POST', '/vendas/carrinho/itens', { idProduto: C.id_produto, quantidade: 1 }, c3.token);
+  r = await req('POST', '/vendas/pedidos', { idEndereco: c3.idEndereco }, c3.token);
+  const orfao = r.b;
+  ok(r.s === 201 && (await c.estoqueDe(C)) === 2, `pedido criado reservou o estoque (C 3->2) -> ${r.s}`);
+  c.sql('vendas', `UPDATE pedido SET ativo = 0, data = NOW() - INTERVAL 1 HOUR WHERE id_pedido = ${orfao.id_pedido}`);
+  const sumiu = await c.aguardar(async () => c.sql('vendas', `SELECT COUNT(*) FROM pedido WHERE id_pedido = ${orfao.id_pedido}`) === '0', {
+    tentativas: 14,
+    intervaloMs: 8000,
+  });
+  ok(sumiu, 'pedido órfão foi apagado pela rotina de recuperação');
+  ok((await c.estoqueDe(C)) === 3, 'a reserva do pedido órfão foi devolvida ao Catálogo (C 3)');
+  ok((await req('GET', `/vendas/pedidos/${orfao.id_pedido}`, null, admin)).s === 404, 'o pedido órfão deixou de existir');
 
   return c.resultado;
 }

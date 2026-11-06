@@ -6,7 +6,7 @@ jest.mock('../src/config/database', () => ({
 }));
 
 jest.mock('../src/models', () => ({
-  Pagamento: { findOne: jest.fn(), create: jest.fn(), update: jest.fn() },
+  Pagamento: { findOne: jest.fn(), findAndCountAll: jest.fn(), create: jest.fn(), update: jest.fn() },
 }));
 
 jest.mock('../src/clients/vendasClient', () => ({

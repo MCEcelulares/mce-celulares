@@ -72,3 +72,8 @@ O evento carrega todos os dados necessários para o consumidor agir. O Notifica�
 - **Consumo (Notificação):** eventos fora do contrato (JSON inválido, `tipo` diferente do canal, `versao` desconhecida, dados sem e-mail) são **descartados** com log e métrica `evento_invalido`. O registro em `notificacao_log` nasce `PENDENTE` e vira `ENVIADO` ou `FALHA`; o envio tenta até 3 vezes; um evento **republicado** para uma notificação em `FALHA` tenta reenviar, enquanto uma já `ENVIADA` é ignorada (idempotência).
 - **Fila de envio:** os e-mails saem um por vez, com pausa configurável (`EMAIL_INTERVALO_MS`), porque provedores de SMTP limitam a taxa (o plano gratuito do Mailtrap recusa rajadas).
 - **Limitação conhecida:** se o processo cair no meio de um envio, o registro fica `PENDENTE` e um evento republicado é ignorado.
+
+## Atualização (2026-11-05) — reenvio automático na Notificação
+- `notificacao_log` guarda `assunto` e `texto` do e-mail e conta as rodadas de envio (`tentativas`). Uma rotina reenvia sozinha as notificações em `FALHA` (e as `PENDENTE` presas há mais de 10 minutos), com espera que dobra a cada rodada (2, 4, 8… até 60 min) e no máximo `NOTIFICACAO_REENVIO_MAX_TENTATIVAS` rodadas (padrão 5); depois fica em `FALHA` definitiva.
+- Cada notificação é reivindicada por UPDATE condicional, então só uma instância envia. Isso substitui a "limitação conhecida" anterior (registro preso em `PENDENTE` ignorava eventos republicados).
+- Registros anteriores a essa mudança não têm conteúdo guardado e não são reenviados. A listagem por pedido não expõe o `texto`.

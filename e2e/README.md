@@ -12,12 +12,16 @@ Código de saída `0` = tudo passou. Leva alguns minutos: espera o e-mail sair (
 10,5 s por e-mail) e a rotina que expira pedidos sem pagamento (roda a cada minuto).
 
 ## O que cobrem
-- **Catálogo:** cadastro, filtros e paginação, cache no Redis, baixa/reposição de estoque (inclusive 6 baixas simultâneas),
-  upload de imagem (tipo, conteúdo, tamanho, substituição, caminho malicioso), visão do painel com itens inativos e resumo.
+- **Catálogo:** cadastro, filtros e paginação, ajuste de estoque do painel, **reservas por pedido** pelas rotas internas
+  (tudo ou nada, idempotência, devolução, 6 reservas simultâneas, bloqueio de `/interno` no gateway), upload de imagem
+  (tipo, conteúdo, tamanho, substituição, remoção, caminho malicioso), visão do painel com itens inativos e resumo.
 - **Vendas:** carrinho, pedido com Identidade e Catálogo reais, acesso por dono/permissão, status, cancelamento com
-  devolução de estoque, disputa pela última unidade, **expiração de pedido sem pagamento** e e-mail do `pedido.criado`.
-- **Pagamento:** validações, pagamento com o gateway simulado, `sincronizar`, webhook, e-mails dos dois eventos, painel de
-  vendas (receita e mais vendidos) e devolução de estoque ao cancelar um pedido pago.
+  devolução da reserva, disputa pela última unidade, **expiração de pedido sem pagamento**, **recuperação de pedido órfão**
+  e e-mail do `pedido.criado`.
+- **Pagamento:** validações, pagamento com o gateway simulado, `sincronizar`, webhook, e-mails dos dois eventos, listagem de
+  pagamentos do operador, **reenvio automático de e-mail que falhou**, painel de vendas (receita e mais vendidos) e devolução
+  de estoque ao cancelar um pedido pago. O `REEMBOLSAR` só é coberto nos testes unitários (exige um pagamento aprovado no
+  Mercado Pago real); aqui o teste marca o status direto no banco só para conferir a listagem.
 
 ## Pré-requisitos do ambiente
 - `GATEWAY_PAGAMENTO=simulado` no `pagamento-service/.env` (a compra real com Mercado Pago é manual: veja o README do Pagamento).
