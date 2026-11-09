@@ -39,7 +39,7 @@ graph TD
     SVC_NOT --> DB_NOT
 
     SVC_VEN -->|"HTTP síncrono: valida usuário e endereço (token do usuário)"| SVC_ID
-    SVC_VEN -->|"HTTP síncrono: preço, estoque, baixa e reposição (token de serviço)"| SVC_CAT
+    SVC_VEN -->|"HTTP síncrono: preço, reserva e devolução de estoque (token de serviço)"| SVC_CAT
     SVC_PAG -->|"HTTP síncrono: lê o pedido e atualiza o status (token de serviço)"| SVC_VEN
     SVC_PAG -->|"HTTP: cria preferência e consulta pagamento"| MP
     MP -.->|"webhook de pagamento (via Gateway)"| GW
@@ -68,7 +68,7 @@ graph TD
 | Bancos MySQL | MySQL (x5) | Um banco isolado por serviço, sem FK entre eles; o schema é criado pelas migrations de cada serviço |
 
 ## Decisões que complementam este desenho
-- **Vendas → Catálogo** (consulta de preço/estoque, baixa e reposição, com compensação): ADR-009.
+- **Vendas → Catálogo** (consulta de preço/estoque, reserva por pedido e devolução idempotente, com recuperação de órfãos): ADR-009.
 - **Token de serviço** nas chamadas internas sem usuário: ADR-010.
 - **Pagamento e Mercado Pago** (Checkout Pro, webhook, sincronização, confirmação idempotente): ADR-011.
 - **Expiração de pedidos não pagos** (rotina do Vendas que devolve o estoque ao Catálogo): ADR-009, seção "Atualização".

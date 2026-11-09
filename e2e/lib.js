@@ -2,7 +2,7 @@
 // Utilitários dos testes ponta a ponta. Sem dependências: usa só o Node 20+ (fetch, FormData) e o Docker.
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, execFile } = require('child_process');
 
 const RAIZ = path.resolve(__dirname, '..');
 
@@ -40,6 +40,32 @@ function docker(args) {
 function sql(servico, comando) {
   const script = 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "' + comando.replace(/"/g, '\\"') + '" "$MYSQL_DATABASE"';
   return docker([servico + '_db', 'sh', '-c', script]);
+}
+
+// As rotas /interno/* do Catálogo são bloqueadas no gateway (só o Vendas as usa, com o token de serviço). Para testá-las,
+// a chamada sai de dentro do container do Catálogo, que já tem o SERVICE_TOKEN. token: 'ok' | 'errado' | 'sem'.
+const SCRIPT_INTERNO =
+  'const [m,p,b,t]=process.argv.slice(1);' +
+  'const h={"content-type":"application/json"};' +
+  'if(t!=="sem")h.Authorization="Bearer "+(t==="errado"?"errado":process.env.SERVICE_TOKEN);' +
+  'fetch("http://localhost:"+(process.env.PORT||3002)+p,{method:m,headers:h,body:b||undefined})' +
+  '.then(async r=>console.log(JSON.stringify({s:r.status,b:await r.json().catch(()=>null)})))';
+const argsInterno = (metodo, caminho, corpo, token) => [
+  'compose', 'exec', '-T', 'catalogo', 'node', '-e', SCRIPT_INTERNO, metodo, caminho, corpo ? JSON.stringify(corpo) : '', token,
+];
+
+function interno(metodo, caminho, corpo, token = 'ok') {
+  const saida = execFileSync('docker', argsInterno(metodo, caminho, corpo, token), { cwd: RAIZ, stdio: ['ignore', 'pipe', 'ignore'] });
+  return JSON.parse(saida.toString().trim());
+}
+
+// Versão assíncrona: permite disparar várias chamadas ao mesmo tempo (disputa de estoque).
+function internoAssincrono(metodo, caminho, corpo, token = 'ok') {
+  return new Promise((resolve, reject) => {
+    execFile('docker', argsInterno(metodo, caminho, corpo, token), { cwd: RAIZ }, (erro, saida) =>
+      erro ? reject(erro) : resolve(JSON.parse(saida.trim()))
+    );
+  });
 }
 
 function redisGet(chave) {
@@ -134,7 +160,7 @@ function criarContexto(nome) {
   const estoqueDe = async (produto) => (await req('GET', `/catalogo/produtos/${produto.id_produto}`)).b.estoque;
 
   return {
-    nome, run, resultado, ok, req, esperar, aguardar, sql, redisGet, loginAdmin, novoCliente,
+    nome, run, resultado, ok, req, esperar, aguardar, sql, redisGet, interno, internoAssincrono, loginAdmin, novoCliente,
     criarCatalogoDeTeste, estoqueDe, env: { identidade, vendas: lerEnv('vendas-service/.env'), catalogo: lerEnv('catalogo-service/.env') },
   };
 }

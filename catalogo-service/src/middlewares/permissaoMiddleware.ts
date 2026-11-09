@@ -16,6 +16,16 @@ export function exigirPermissao(...permissoes: string[]) {
   };
 }
 
+export function exigirPermissaoSeIncluirInativos(...permissoes: string[]) {
+  const exigir = exigirPermissao(...permissoes);
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (String(req.query.incluirInativos) === 'true') {
+      return exigir(req, res, next);
+    }
+    next();
+  };
+}
+
 export function temPermissao(req: AuthRequest, permissao: string): boolean {
   return req.usuarioAutenticado?.permissoes.includes(permissao) ?? false;
 }

@@ -36,3 +36,10 @@ export function autenticarOpcional(req: AuthRequest, _res: Response, next: NextF
   if (payload) req.usuarioAutenticado = payload;
   next();
 }
+
+export function autenticarSeIncluirInativos(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.query.incluirInativos === 'true') {
+    return autenticar(req, res, next);
+  }
+  next();
+}

@@ -12,7 +12,7 @@ Já a validação do usuário e do endereço no Identidade continua usando o **J
 ## Decisão
 - As rotas **internas** aceitam `Authorization: Bearer <token de serviço>`: um segredo por serviço de destino, configurado como `SERVICE_TOKEN` no destino e com o mesmo valor numa variável do chamador (`CATALOGO_SERVICE_TOKEN` no Vendas, `VENDAS_SERVICE_TOKEN` no Pagamento).
 - Rotas internas hoje:
-  - Catálogo: `POST /produtos/{id}/estoque/baixa` e `POST /produtos/{id}/estoque/reposicao` (somente token de serviço);
+  - Catálogo: `GET /interno/produtos`, `POST /interno/reservas`, `GET /interno/reservas/{idPedido}` e `POST /interno/reservas/{idPedido}/devolucao` (somente token de serviço; o prefixo `/interno/` é **bloqueado no gateway**, então só é alcançável dentro da rede dos contêineres);
   - Vendas: `GET /pedidos/{id}` e `PATCH /pedidos/{id}/status` (**token de serviço ou** JWT de usuário com a permissão adequada).
 - O token é comparado em **tempo constante**. JWT de usuário não vale nas rotas só-serviço, e o token de serviço não vale nas demais rotas.
 - Sem `SERVICE_TOKEN` configurado, a rota interna fica **desligada (404)**, no mesmo padrão do `/metrics`.

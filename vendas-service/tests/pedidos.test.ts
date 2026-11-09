@@ -16,8 +16,8 @@ const enderecoMock = EnderecoPedido as unknown as Record<string, jest.Mock>;
 const usuarioPedidoMock = UsuarioPedido as unknown as Record<string, jest.Mock>;
 const transaction = (sequelize as unknown as Record<string, jest.Mock>).transaction;
 const buscarProduto = catalogo.buscarProduto as jest.Mock;
-const baixarEstoque = catalogo.baixarEstoque as jest.Mock;
-const reporEstoque = catalogo.reporEstoque as jest.Mock;
+const reservarEstoque = catalogo.reservarEstoque as jest.Mock;
+const devolverReserva = catalogo.devolverReserva as jest.Mock;
 const buscarUsuario = identidade.buscarUsuario as jest.Mock;
 const buscarEndereco = identidade.buscarEndereco as jest.Mock;
 
@@ -54,13 +54,14 @@ describe('POST /pedidos', () => {
         ? produtoCatalogo({ id_produto: 10, nome: 'iPhone 15', preco: 12.5, estoque: 5 })
         : produtoCatalogo({ id_produto: 11, nome: 'Capa', preco: 100, estoque: 5 })
     );
-    baixarEstoque.mockResolvedValue('ok');
-    reporEstoque.mockResolvedValue(undefined);
+    reservarEstoque.mockResolvedValue({ tipo: 'ok' });
+    devolverReserva.mockResolvedValue(undefined);
+    pedidoMock.update.mockResolvedValue([1]);
     pedidoMock.create.mockResolvedValue({ id_pedido: 77 });
     pedidoMock.findByPk.mockResolvedValue(pedidoCom());
   });
 
-  it('cria o pedido: valida usuário e endereço, baixa o estoque, grava os snapshots e publica o evento', async () => {
+  it('cria o pedido: valida usuário e endereço, grava invisível, reserva o estoque, torna visível e publica o evento', async () => {
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
 
     expect(r.status).toBe(201);
@@ -70,11 +71,13 @@ describe('POST /pedidos', () => {
     expect(buscarUsuario).toHaveBeenCalledWith(5, `Bearer ${tokenCliente}`);
     expect(buscarEndereco).toHaveBeenCalledWith(5, 3, `Bearer ${tokenCliente}`);
 
-    // estoque reservado no Catálogo
-    expect(baixarEstoque.mock.calls).toEqual([[10, 2], [11, 1]]);
+    // estoque reservado no Catálogo de uma vez, para o id do pedido
+    expect(reservarEstoque.mock.calls).toEqual([
+      [77, [{ id_produto: 10, quantidade: 2 }, { id_produto: 11, quantidade: 1 }]],
+    ]);
 
     // total usa o preço ATUAL do Catálogo (2 x 12,50 + 1 x 100,00), não o do carrinho
-    expect(pedidoMock.create.mock.calls[0][0]).toMatchObject({ valor_total: 125, valor_frete: 0, status: 'AGUARDANDO_PAGAMENTO' });
+    expect(pedidoMock.create.mock.calls[0][0]).toMatchObject({ valor_total: 125, valor_frete: 0, status: 'AGUARDANDO_PAGAMENTO', ativo: false });
     expect(itemPedidoMock.bulkCreate.mock.calls[0][0]).toEqual([
       { id_pedido: 77, id_produto: 10, nome_produto: 'iPhone 15', quantidade: 2, preco_unitario: 12.5 },
       { id_pedido: 77, id_produto: 11, nome_produto: 'Capa', quantidade: 1, preco_unitario: 100 },
@@ -84,9 +87,12 @@ describe('POST /pedidos', () => {
       id_pedido: 77, id_usuario: 5, nome: 'Rafael', email: 'rafael@mce.test', cpf: '52998224725',
     });
 
-    // carrinho encerrado dentro da mesma transação
+    // o pedido só fica visível DEPOIS da reserva, junto com o encerramento do carrinho (mesma transação)
+    expect(pedidoMock.update).toHaveBeenCalledWith({ ativo: true }, { where: { id_pedido: 77 }, transaction: { id: 'tx' } });
     expect(carrinho.update).toHaveBeenCalledWith({ ativo: false }, { transaction: { id: 'tx' } });
-    expect(reporEstoque).not.toHaveBeenCalled();
+    expect(reservarEstoque.mock.invocationCallOrder[0]).toBeLessThan(pedidoMock.update.mock.invocationCallOrder[0]);
+    expect(devolverReserva).not.toHaveBeenCalled();
+    expect(pedidoMock.destroy).not.toHaveBeenCalled();
   });
 
   it('publica pedido.criado no formato do ADR-008', async () => {
@@ -131,7 +137,7 @@ describe('POST /pedidos', () => {
     preparar();
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
     expect(r.status).toBe(422);
-    expect(baixarEstoque).not.toHaveBeenCalled();
+    expect(reservarEstoque).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -146,50 +152,94 @@ describe('POST /pedidos', () => {
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
     expect(r.status).toBe(422);
     expect(r.body.erro).toMatch(mensagem);
-    expect(baixarEstoque).not.toHaveBeenCalled();
+    expect(reservarEstoque).not.toHaveBeenCalled();
     expect(pedidoMock.create).not.toHaveBeenCalled();
   });
 
-  it('responde 409 sem reservar nada quando o estoque atual não cobre o carrinho', async () => {
+  it('responde 409 sem gravar nem reservar nada quando o estoque atual não cobre o carrinho', async () => {
     buscarProduto.mockImplementation(async (id: number) => produtoCatalogo({ id_produto: id, nome: `P${id}`, estoque: id === 11 ? 0 : 5 }));
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
     expect(r.status).toBe(409);
-    expect(baixarEstoque).not.toHaveBeenCalled();
+    expect(reservarEstoque).not.toHaveBeenCalled();
   });
 
-  it('devolve o que já reservou se a baixa de um item falhar (corrida de estoque)', async () => {
-    baixarEstoque.mockResolvedValueOnce('ok').mockResolvedValueOnce('insuficiente');
+  it('responde 409 com as faltas e apaga o pedido invisível se o Catálogo recusar por falta de estoque (corrida)', async () => {
+    reservarEstoque.mockResolvedValue({
+      tipo: 'sem_estoque',
+      faltas: [{ id_produto: 11, solicitado: 1, disponivel: 0 }],
+    });
 
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
 
     expect(r.status).toBe(409);
-    expect(reporEstoque.mock.calls).toEqual([[10, 2]]);
-    expect(pedidoMock.create).not.toHaveBeenCalled();
+    expect(r.body.erro).toMatch(/Estoque insuficiente para "Capa" \(disponível: 0\)/);
+    expect(pedidoMock.destroy).toHaveBeenCalledWith(expect.objectContaining({ where: { id_pedido: 77, ativo: false } }));
+    expect(itemPedidoMock.destroy).toHaveBeenCalledWith(expect.objectContaining({ where: { id_pedido: 77 } }));
+    expect(pedidoMock.update).not.toHaveBeenCalled();
+    expect(carrinho.update).not.toHaveBeenCalled();
     expect(publicar).not.toHaveBeenCalled();
   });
 
-  it('devolve todo o estoque reservado se gravar no banco falhar', async () => {
+  it.each([
+    [404, 'Produto(s) não existe(m): 10', 422],
+    [409, 'Produto(s) indisponível(is): 10', 409],
+  ])('recusa %s do Catálogo vira %s para o cliente e apaga o pedido invisível', async (status, mensagem, esperado) => {
+    reservarEstoque.mockResolvedValue({ tipo: 'recusada', status, mensagem });
+
+    const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
+
+    expect(r.status).toBe(esperado);
+    expect(pedidoMock.destroy).toHaveBeenCalled();
+    expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('responde 503, devolve a reserva (pode ter sido feita) e apaga o pedido se o Catálogo cair na reserva', async () => {
+    reservarEstoque.mockRejectedValue(new ErroHttp(503, 'Catálogo indisponível no momento'));
+
+    const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
+
+    expect(r.status).toBe(503);
+    expect(devolverReserva).toHaveBeenCalledWith(77);
+    expect(pedidoMock.destroy).toHaveBeenCalled();
+    expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('se a devolução também falhar, mantém o pedido invisível (a recuperação de órfãos resolve) e responde 503', async () => {
+    reservarEstoque.mockRejectedValue(new ErroHttp(503, 'Catálogo indisponível no momento'));
+    devolverReserva.mockRejectedValue(new ErroHttp(503, 'Catálogo indisponível no momento'));
+
+    const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
+
+    expect(r.status).toBe(503);
+    expect(pedidoMock.destroy).not.toHaveBeenCalled();
+  });
+
+  it('devolve a reserva e apaga o pedido se não conseguir torná-lo visível', async () => {
+    pedidoMock.update.mockRejectedValue(new Error('banco fora do ar'));
+
+    const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
+
+    expect(r.status).toBe(500);
+    expect(devolverReserva).toHaveBeenCalledWith(77);
+    expect(pedidoMock.destroy).toHaveBeenCalled();
+    expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('se a gravação inicial do pedido falhar, não reserva nada', async () => {
     transaction.mockRejectedValue(new Error('banco fora do ar'));
 
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
 
     expect(r.status).toBe(500);
-    expect(reporEstoque.mock.calls).toEqual([[10, 2], [11, 1]]);
-    expect(publicar).not.toHaveBeenCalled();
-  });
-
-  it('responde 503 e devolve o estoque se o Catálogo cair no meio da reserva', async () => {
-    baixarEstoque.mockResolvedValueOnce('ok').mockRejectedValueOnce(new ErroHttp(503, 'Catálogo indisponível no momento'));
-    const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
-    expect(r.status).toBe(503);
-    expect(reporEstoque.mock.calls).toEqual([[10, 2]]);
+    expect(reservarEstoque).not.toHaveBeenCalled();
+    expect(devolverReserva).not.toHaveBeenCalled();
   });
 
   it('responde 503 se o Identidade estiver fora do ar', async () => {
     buscarUsuario.mockRejectedValue(new ErroHttp(503, 'Identidade indisponível no momento'));
     const r = await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
     expect(r.status).toBe(503);
-    expect(baixarEstoque).not.toHaveBeenCalled();
+    expect(reservarEstoque).not.toHaveBeenCalled();
   });
 
   it('exige token e idEndereco válido', async () => {
@@ -287,7 +337,7 @@ describe('PATCH /pedidos/:id/status', () => {
     api.patch(`/pedidos/${id}/status`).set(headers).send({ status });
 
   beforeEach(() => {
-    reporEstoque.mockResolvedValue(undefined);
+    devolverReserva.mockResolvedValue(undefined);
     pedidoMock.update.mockResolvedValue([1]);
   });
 
@@ -310,7 +360,7 @@ describe('PATCH /pedidos/:id/status', () => {
     );
     expect(r.body.cliente).toMatchObject({ nome: 'Rafael', email: 'rafael@mce.test' });
     expect(r.body.valor_total).toBe(125);
-    expect(reporEstoque).not.toHaveBeenCalled();
+    expect(devolverReserva).not.toHaveBeenCalled();
   });
 
   it('repetir o status atual é aceito sem alterar nada (idempotente)', async () => {
@@ -343,26 +393,26 @@ describe('PATCH /pedidos/:id/status', () => {
     expect((await patch('ENVIADO', bearer(tokenDe(1, ['pedidos:atualizar-status'])))).status).toBe(200);
   });
 
-  it('com JWT, cancelar exige pedidos:cancelar e devolve o estoque de cada item (RF35)', async () => {
+  it('com JWT, cancelar exige pedidos:cancelar e devolve a reserva do pedido (RF35)', async () => {
     const pedido = pedidoCom({ status: 'PAGO' });
     pedidoMock.findByPk.mockResolvedValue(pedido);
 
     expect((await patch('CANCELADO', bearer(tokenDe(1, ['pedidos:atualizar-status'])))).status).toBe(403);
-    expect(reporEstoque).not.toHaveBeenCalled();
+    expect(devolverReserva).not.toHaveBeenCalled();
 
     const r = await patch('CANCELADO', bearer(tokenDe(1, ['pedidos:cancelar'])));
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('CANCELADO');
-    expect(reporEstoque.mock.calls).toEqual([[10, 2], [11, 1]]);
+    expect(devolverReserva.mock.calls).toEqual([[77]]);
   });
 
-  it('cancela mesmo que a devolução de estoque falhe (fica registrado para conciliação)', async () => {
+  it('cancela mesmo que a devolução da reserva falhe (fica registrado para conciliação)', async () => {
     pedidoMock.findByPk.mockResolvedValue(pedidoCom());
-    reporEstoque.mockRejectedValue(new ErroHttp(502, 'falha'));
+    devolverReserva.mockRejectedValue(new ErroHttp(502, 'falha'));
     const r = await patch('CANCELADO');
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('CANCELADO');
-    expect(reporEstoque).toHaveBeenCalledTimes(2); // tentou todos os itens
+    expect(devolverReserva).toHaveBeenCalledTimes(1);
   });
 
   it('responde 404 para pedido inexistente e 400 para status inválido', async () => {

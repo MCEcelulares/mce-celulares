@@ -18,18 +18,19 @@ jest.mock('../src/models', () => ({
     findAll: jest.fn(),
     findAndCountAll: jest.fn(),
     update: jest.fn(),
+    destroy: jest.fn(),
     sum: jest.fn(),
     count: jest.fn(),
   },
-  ItemPedido: { bulkCreate: jest.fn(), findAll: jest.fn() },
-  EnderecoPedido: { create: jest.fn() },
-  UsuarioPedido: { create: jest.fn() },
+  ItemPedido: { bulkCreate: jest.fn(), findAll: jest.fn(), destroy: jest.fn() },
+  EnderecoPedido: { create: jest.fn(), destroy: jest.fn() },
+  UsuarioPedido: { create: jest.fn(), destroy: jest.fn() },
 }));
 
 jest.mock('../src/clients/catalogoClient', () => ({
   buscarProduto: jest.fn(),
-  baixarEstoque: jest.fn(),
-  reporEstoque: jest.fn(),
+  reservarEstoque: jest.fn(),
+  devolverReserva: jest.fn(),
 }));
 
 jest.mock('../src/clients/identidadeClient', () => ({
