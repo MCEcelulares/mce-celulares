@@ -25,7 +25,6 @@ const incluirDetalhe = [
 ];
 const ordemItens: Order = [[{ model: ItemPedido, as: 'itens' }, 'id_item', 'ASC']];
 
-// Fluxo do pedido (RF33). Repetir o status atual é aceito (o Pagamento pode repetir a chamada).
 const TRANSICOES: Record<StatusPedido, StatusPedido[]> = {
   AGUARDANDO_PAGAMENTO: ['PAGO', 'CANCELADO'],
   PAGO: ['ENVIADO', 'CANCELADO'],
@@ -34,7 +33,6 @@ const TRANSICOES: Record<StatusPedido, StatusPedido[]> = {
   CANCELADO: [],
 };
 
-// Pedido não pago expira e devolve o estoque (ADR-009). PEDIDO_EXPIRA_MINUTOS=0 desliga.
 export const minutosParaExpirar = () => Number(process.env.PEDIDO_EXPIRA_MINUTOS ?? 30);
 
 function expiraEm(pedido: Pedido): string | null {
@@ -48,7 +46,6 @@ function dadosDoCliente(pedido: Pedido) {
   return c ? { id_usuario: c.id_usuario, nome: c.nome, email: c.email, telefone: c.telefone } : null;
 }
 
-// Nunca expõe CPF nem id_envio_externo.
 export function paraResposta(pedido: Pedido) {
   const e = pedido.endereco;
   return {
@@ -306,7 +303,8 @@ export type AutorDaMudanca = { servico: true } | { servico: false; usuario: Toke
 
 export async function buscarPedido(autor: AutorDaMudanca, id: number) {
   const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
-  if (!pedido) throw new ErroHttp(404, 'Pedido não existe');
+  // Pedido invisível (ativo=false) é uma criação que ainda não terminou (ou ficou pela metade): não existe para ninguém.
+  if (!pedido || pedido.ativo === false) throw new ErroHttp(404, 'Pedido não existe');
 
   if (!autor.servico) {
     const dono = pedido.cliente?.id_usuario === autor.usuario.id_usuario;
@@ -319,7 +317,7 @@ export async function buscarPedido(autor: AutorDaMudanca, id: number) {
 
 export async function atualizarStatus(id: number, novoStatus: StatusPedido, autor: AutorDaMudanca) {
   const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
-  if (!pedido) throw new ErroHttp(404, 'Pedido não existe');
+  if (!pedido || pedido.ativo === false) throw new ErroHttp(404, 'Pedido não existe');
 
   if (!autor.servico) {
     const exigida = novoStatus === 'CANCELADO' ? PERMISSAO_CANCELAR : PERMISSAO_ATUALIZAR_STATUS;

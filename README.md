@@ -67,7 +67,13 @@ cd catalogo-service && npm ci && npx tsc --noEmit && npx jest --runInBand
 # ponta a ponta, contra o ambiente que está no ar
 node e2e/executar.js
 ```
-Veja [e2e/README.md](e2e/README.md) e o [CI](.github/workflows/ci.yml), que roda tipagem, testes, validação dos contratos e o build das imagens.
+Veja [e2e/README.md](e2e/README.md) e o [CI](.github/workflows/ci.yml), que roda tipagem, testes (os 5 serviços), validação dos contratos contra as rotas, `nginx -t` e o build das imagens.
+
+## Documentação da API
+Com o ambiente no ar, o Swagger UI com os contratos dos 5 serviços fica em `http://localhost:8080/docs/` (seletor no topo; carrega a interface de um CDN, então precisa de internet). Os contratos ficam em `apis/` e o CI falha se uma rota do código estiver sem documentação (`python3 scripts/verificar-contratos.py`).
+
+## Deploy e rollback
+Cada tag `v*` publica as imagens no GitHub Container Registry (`cd.yml`). No servidor: `REGISTRY_OWNER=<dono> ./scripts/deploy.sh v1.0.0` aplica a versão, confere a saúde dos 5 serviços e volta sozinho para a anterior se algo falhar; `./scripts/rollback.sh [tag]` volta manualmente. Detalhes e limites (migrations!) em [ADR-014](documentacao-arquiteturial/ADRs/ADR-014-cd-com-rollback-por-tag.md). Em incidente, siga o [runbook](operacao/runbook-incidentes.md).
 
 ## Mercado Pago
 O pagamento real usa o Checkout Pro. O roteiro de teste (contas, cartões, webhook) está em
@@ -91,11 +97,13 @@ O pagamento real usa o Checkout Pro. O roteiro de teste (contas, cartões, webho
 ## Mapa do repositório
 - `identidade-service/`, `catalogo-service/`, `vendas-service/`, `pagamento-service/`, `notificacao-service/` — os serviços
 - `apis/` — contrato OpenAPI de cada serviço
-- `documentacao-arquiteturial/` — C4 (contexto e containers), diagramas e os ADRs (decisões 001 a 013)
+- `documentacao-arquiteturial/` — C4 (contexto e containers), diagramas e os ADRs (decisões 001 a 014)
 - `ddd/` — Context Map e Bounded Contexts
 - `requisitos/` — requisitos funcionais e não funcionais
 - `qualidade-observabilidade/` — cenários de qualidade e SLOs
+- `operacao/` — runbook de incidentes
+- `scripts/` — deploy, rollback e verificação dos contratos
 - `tech-forge/` — Cynefin e ciclo de vida
-- `infra/nginx/` — configuração do gateway
+- `infra/nginx/` — configuração do gateway · `infra/swagger/` — página do Swagger UI
 - `keys/` — gerador do par de chaves JWT
 - `e2e/` — testes ponta a ponta

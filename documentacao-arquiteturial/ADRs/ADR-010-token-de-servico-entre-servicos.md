@@ -15,7 +15,7 @@ Já a validação do usuário e do endereço no Identidade continua usando o **J
   - Catálogo: `GET /interno/produtos`, `POST /interno/reservas`, `GET /interno/reservas/{idPedido}` e `POST /interno/reservas/{idPedido}/devolucao` (somente token de serviço; o prefixo `/interno/` é **bloqueado no gateway**, então só é alcançável dentro da rede dos contêineres);
   - Vendas: `GET /pedidos/{id}` e `PATCH /pedidos/{id}/status` (**token de serviço ou** JWT de usuário com a permissão adequada).
 - O token é comparado em **tempo constante**. JWT de usuário não vale nas rotas só-serviço, e o token de serviço não vale nas demais rotas.
-- Sem `SERVICE_TOKEN` configurado, a rota interna fica **desligada (404)**, no mesmo padrão do `/metrics`.
+- Sem `SERVICE_TOKEN` configurado, a rota interna fica **desligada**: o Catálogo responde 503 em `/interno/*` (o `/metrics`, sem `METRICS_TOKEN`, responde 404).
 - Os tokens ficam nos `.env` (nunca no git) e devem ser aleatórios e longos (os atuais têm 192 bits, gerados com `crypto.randomBytes(24)`).
 
 ## Consequências

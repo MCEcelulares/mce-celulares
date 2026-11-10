@@ -27,3 +27,7 @@ Comunicação síncrona (HTTP) entre serviços acumula latência e acoplamento t
 - **Resiliência implementada:** todas as chamadas HTTP entre serviços têm **timeout de 5 s** (`HTTP_TIMEOUT_MS`). Consultas (GET) têm **1 nova tentativa**; o `PATCH` de status `PAGO` também, porque o Vendas aceita repetir o mesmo status; a reserva e a devolução de estoque também (são idempotentes por pedido, ADR-009); apenas a criação de preferência de pagamento **não** é repetida. Falha ou timeout do serviço chamado vira **503** para o cliente.
 - **Autenticação entre serviços:** token de serviço quando não há usuário (ADR-010).
 - **Cache-aside de `user:{id}` no Vendas (previsto no C4): não foi implementado.** O Vendas valida o usuário e o endereço com o **token do próprio usuário** (ADR-006) e precisa dos dados **atuais** (conta ativa, CPF, telefone, endereço) no fechamento da compra; um cache por `user:{id}` serviria dado possivelmente velho, e economizaria só uma chamada por pedido. Reavaliar se o SLO 2 (`POST /pedidos` com p95 < 1,5 s) não for atingido. O cache `produto:{id}` do Catálogo existe como previsto.
+
+## Atualização (2026-11-09) — backoff e circuit breaker
+- O retry agora **espera entre as tentativas** (backoff exponencial a partir de 200 ms) e há **circuit breaker** por serviço chamado no Vendas e no Pagamento: abre depois de 5 chamadas seguidas que falharam, recusa na hora com 503 e testa de novo uma vez a cada 10 s. Parâmetros (`HTTP_BACKOFF_BASE_MS`, `CIRCUIT_FALHAS`, `CIRCUIT_RESET_MS`) e métricas em `qualidade-observabilidade/quality-scenarios-slo.md`.
+

@@ -330,6 +330,12 @@ describe('GET /pedidos/:id', () => {
     expect((await api.get('/pedidos/999').set(cliente)).status).toBe(404);
     expect((await api.get('/pedidos/abc').set(cliente)).status).toBe(400);
   });
+
+  it('responde 404 para pedido invisível (criação ainda não terminou), para o dono e para o serviço', async () => {
+    pedidoMock.findByPk.mockResolvedValue(pedidoCom({ ativo: false }));
+    expect((await api.get('/pedidos/77').set(cliente)).status).toBe(404);
+    expect((await api.get('/pedidos/77').set(servico)).status).toBe(404);
+  });
 });
 
 describe('PATCH /pedidos/:id/status', () => {
@@ -419,6 +425,14 @@ describe('PATCH /pedidos/:id/status', () => {
     pedidoMock.findByPk.mockResolvedValue(null);
     expect((await patch('PAGO')).status).toBe(404);
     expect((await patch('INVENTADO')).status).toBe(400);
+  });
+
+  it('responde 404 e não altera nada em pedido invisível (um pagamento nunca marca como pago um pedido que não terminou de ser criado)', async () => {
+    pedidoMock.findByPk.mockResolvedValue(pedidoCom({ ativo: false }));
+    expect((await patch('PAGO')).status).toBe(404);
+    expect((await patch('CANCELADO')).status).toBe(404);
+    expect(pedidoMock.update).not.toHaveBeenCalled();
+    expect(devolverReserva).not.toHaveBeenCalled();
   });
 });
 
