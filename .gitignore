@@ -5,3 +5,6 @@ node_modules/
 keys/*.pem
 # imagens enviadas em desenvolvimento local
 catalogo-service/uploads/
+# build do TypeScript e estado do deploy no servidor
+dist/
+.deploy/

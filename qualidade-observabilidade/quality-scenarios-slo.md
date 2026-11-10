@@ -12,9 +12,9 @@
 
 ## Estratégias de resiliência aplicadas
 
-- **Retry com backoff:** na chamada síncrona Vendas → Identidade (validar usuário). Ex.: até 2 retentativas com backoff de 200ms/500ms antes de falhar a criação do pedido.
-- **Timeout:** toda chamada HTTP entre serviços tem timeout curto (ex.: 2s) para não travar a requisição do cliente esperando um serviço lento.
-- **Circuit breaker (se sobrar tempo):** na mesma chamada Vendas → Identidade, abrindo o circuito após N falhas seguidas e voltando a tentar depois de um tempo, evitando sobrecarregar um serviço já instável.
+- **Timeout:** toda chamada HTTP entre serviços tem timeout de 5 s (`HTTP_TIMEOUT_MS`) para não travar a requisição do cliente esperando um serviço lento.
+- **Retry com backoff exponencial:** só em chamadas idempotentes (consultas GET, reserva e devolução de estoque por pedido, mudança de status repetível). 1 nova tentativa após 200 ms (`HTTP_BACKOFF_BASE_MS`; as seguintes dobrariam: 400 ms, 800 ms...). Falha de rede, timeout e 5xx são repetidos; 4xx não.
+- **Circuit breaker:** implementado em `clients/http.ts` do Vendas e do Pagamento, um circuito por serviço chamado (Identidade, Catálogo, Vendas, Mercado Pago). Abre depois de 5 chamadas seguidas que falharam (`CIRCUIT_FALHAS`); aberto, recusa na hora com 503 sem tocar na rede; passados 10 s (`CIRCUIT_RESET_MS`) deixa passar uma única chamada de teste (meio-aberto): se der certo fecha, se falhar reabre. Respostas 4xx não contam como falha. Observável nas métricas `*_eventos_total{evento="circuito_aberto|circuito_fechado|circuito_recusou_chamada"}`.
 - **Cache-aside como mitigação de latência:** reduz a necessidade de repetir a mesma chamada síncrona (usuário) ou consulta pesada (produto) em um curto intervalo.
 - **Redundância (fora do escopo didático):** em produção, cada serviço rodaria com mais de uma réplica atrás do Nginx — mencionado aqui como estratégia, não implementado no ambiente de desenvolvimento.
 
