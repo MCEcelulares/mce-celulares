@@ -235,6 +235,58 @@ describe('POST /pagamentos', () => {
   });
 });
 
+describe('GET /pagamentos (visão do operador)', () => {
+  it('exige token e a permissão pedidos:listar-todos', async () => {
+    expect((await api.get('/pagamentos')).status).toBe(401);
+    expect((await api.get('/pagamentos').set(cliente)).status).toBe(403);
+    expect(pagamentoMock.findAndCountAll).not.toHaveBeenCalled();
+  });
+
+  it('lista do mais recente para o mais antigo, com paginação, mostrando o id do gateway e sem o link de pagamento', async () => {
+    pagamentoMock.findAndCountAll.mockResolvedValue({
+      rows: [pagamentoCom({ status: 'REEMBOLSAR', id_pagamento_gateway: '123', url_pagamento: 'https://mp.test/x', id_externo: 'pref-1' })],
+      count: 31,
+    });
+
+    const r = await api.get('/pagamentos?pagina=2&limite=10').set(admin);
+
+    expect(r.status).toBe(200);
+    expect(pagamentoMock.findAndCountAll).toHaveBeenCalledWith({
+      where: {},
+      order: [['id_pagamento', 'DESC']],
+      limit: 10,
+      offset: 10,
+    });
+    expect(r.body).toMatchObject({ pagina: 2, limite: 10, total: 31 });
+    expect(r.body.dados[0]).toMatchObject({ id_pedido: 77, status: 'REEMBOLSAR', valor: 125, id_pagamento_gateway: '123' });
+    expect(JSON.stringify(r.body)).not.toMatch(/mp\.test|pref-1|id_usuario/);
+  });
+
+  it('filtra por status (inclusive REEMBOLSAR) e usa pagina 1 e limite 20 por padrão', async () => {
+    pagamentoMock.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+
+    const r = await api.get('/pagamentos?status=REEMBOLSAR').set(admin);
+
+    expect(r.status).toBe(200);
+    expect(pagamentoMock.findAndCountAll).toHaveBeenCalledWith({
+      where: { status: 'REEMBOLSAR' },
+      order: [['id_pagamento', 'DESC']],
+      limit: 20,
+      offset: 0,
+    });
+  });
+
+  it.each([['status=XPTO'], ['pagina=0'], ['limite=500']])('rejeita ?%s com 400', async (query) => {
+    expect((await api.get(`/pagamentos?${query}`).set(admin)).status).toBe(400);
+  });
+
+  it('"/" não é confundido com um id de pedido', async () => {
+    pagamentoMock.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+    expect((await api.get('/pagamentos').set(admin)).status).toBe(200);
+    expect(pagamentoMock.findOne).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /pagamentos/:idPedido', () => {
   it('mostra o pagamento ao dono, sem dados internos do gateway', async () => {
     pagamentoMock.findOne.mockResolvedValue(pagamentoCom({ id_externo: 'pref-1' }));
@@ -260,7 +312,7 @@ describe('GET /pagamentos/:idPedido', () => {
 });
 
 describe('POST /pagamentos/webhook (Mercado Pago)', () => {
-  const aprovado = { status: 'approved', externalReference: '77', valor: 125 };
+  const aprovado = { id: '123', status: 'approved', externalReference: '77', valor: 125 };
 
   beforeEach(() => {
     pagamentoMock.findOne.mockResolvedValue(pagamentoCom({ url_pagamento: 'https://mp.test/x' }));
@@ -324,6 +376,33 @@ describe('POST /pagamentos/webhook (Mercado Pago)', () => {
     expect(publicar).not.toHaveBeenCalled();
   });
 
+  it.each([404, 409])('pagamento aprovado que o Vendas recusa (%s) fica REEMBOLSAR, com o id do gateway', async (status) => {
+    atualizarStatus.mockRejectedValue(new ErroHttp(status, 'Pedido não aceita pagamento'));
+
+    await api.post('/pagamentos/webhook').send({ type: 'payment', data: { id: '123' } });
+
+    expect(pagamentoMock.update).toHaveBeenCalledWith(
+      { status: 'REEMBOLSAR', id_pagamento_gateway: '123' },
+      { where: { id_pagamento: 1, status: { [Op.ne]: 'APROVADO' } } }
+    );
+    expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('o id do pagamento no gateway é gravado ao confirmar', async () => {
+    await api.post('/pagamentos/webhook').send({ type: 'payment', data: { id: '123' } });
+
+    expect(pagamentoMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'APROVADO', id_pagamento_gateway: '123' }),
+      expect.anything()
+    );
+  });
+
+  it('um erro do Vendas que não é 404/409 NÃO marca para reembolso (o webhook será repetido)', async () => {
+    atualizarStatus.mockRejectedValue(new ErroHttp(503, 'Vendas indisponível no momento'));
+    await api.post('/pagamentos/webhook').send({ type: 'payment', data: { id: '123' } });
+    expect(pagamentoMock.update).not.toHaveBeenCalled();
+  });
+
   it('responde 503 quando o Vendas está fora do ar, para o Mercado Pago tentar de novo', async () => {
     atualizarStatus.mockRejectedValue(new ErroHttp(503, 'Vendas indisponível no momento'));
     const r = await api.post('/pagamentos/webhook').send({ type: 'payment', data: { id: '123' } });
@@ -374,7 +453,7 @@ describe('POST /pagamentos/webhook (Mercado Pago)', () => {
 });
 
 describe('POST /pagamentos/:idPedido/sincronizar (plano B do webhook)', () => {
-  const aprovado = { status: 'approved', externalReference: '77', valor: 125 };
+  const aprovado = { id: '123', status: 'approved', externalReference: '77', valor: 125 };
   const sincronizar = (headers = cliente, id: number | string = 77) =>
     api.post(`/pagamentos/${id}/sincronizar`).set(headers);
 

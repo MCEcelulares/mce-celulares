@@ -1,10 +1,11 @@
 openapi: 3.0.3
 info:
   title: Serviço Notificação — MCEcelulares
-  version: "1.1.0"
+  version: "1.2.0"
   description: >-
     Envio de e-mails transacionais (assina eventos no Redis Pub/Sub, contrato no
-    ADR-008) e formulário de contato.
+    ADR-008) e formulário de contato. E-mails que falham são reenviados sozinhos,
+    com espera crescente (2, 4, 8… até 60 min) e no máximo 5 rodadas.
   license:
     name: UNLICENSED
 servers:
@@ -73,7 +74,9 @@ paths:
       tags: [Logs]
       operationId: listarNotificacoesPorPedido
       summary: Consulta o histórico de notificações enviadas para um pedido (debug/suporte)
-      description: Exige a permissão "pedidos:listar-todos" (RBAC do Identidade, ADR-006).
+      description: >-
+        Exige a permissão "pedidos:listar-todos" (RBAC do Identidade, ADR-006). O texto
+        do e-mail não é exposto.
       parameters:
         - in: path
           name: idPedido
@@ -189,6 +192,8 @@ components:
           type: string
           enum: [PEDIDO_CRIADO, PAGAMENTO_CONFIRMADO]
         destinatario: { type: string }
+        assunto: { type: string, nullable: true }
+        tentativas: { type: integer, description: Rodadas de envio já feitas (cada rodada tenta até 3 vezes) }
         status:
           type: string
           enum: [PENDENTE, ENVIADO, FALHA]

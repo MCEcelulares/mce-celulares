@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Serviço Pagamento — MCEcelulares
-  version: "1.2.0"
+  version: "1.3.0"
   description: >-
     Processamento e status de pagamento. O pagamento é feito no Checkout Pro do
     Mercado Pago: o serviço cria uma preferência com os itens do pedido (RF41,
@@ -87,6 +87,47 @@ paths:
               schema: { $ref: "#/components/schemas/Erro" }
         "503":
           description: Vendas ou Mercado Pago indisponível, ou gateway não configurado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+    get:
+      tags: [Pagamentos]
+      operationId: listarPagamentos
+      summary: Lista pagamentos (visão do operador)
+      description: >-
+        Exige a permissão "pedidos:listar-todos". Do mais recente para o mais
+        antigo. Use status=REEMBOLSAR para ver os pagamentos aprovados no
+        Mercado Pago cujo pedido já não aceitava pagamento (reembolso manual).
+        Mostra o id do pagamento no gateway e nunca o link de pagamento.
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDENTE, APROVADO, RECUSADO, REEMBOLSAR] }
+        - in: query
+          name: pagina
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limite
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Página de pagamentos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dados:
+                    type: array
+                    items: { $ref: "#/components/schemas/PagamentoOperador" }
+                  pagina: { type: integer }
+                  limite: { type: integer }
+                  total: { type: integer }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Sem a permissão pedidos:listar-todos
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
@@ -287,12 +328,25 @@ components:
         valor: { type: number }
         status:
           type: string
-          enum: [PENDENTE, APROVADO, RECUSADO]
+          enum: [PENDENTE, APROVADO, RECUSADO, REEMBOLSAR]
+          description: REEMBOLSAR = aprovado no gateway, mas o pedido já não aceitava pagamento (reembolso manual)
         data_pagamento: { type: string, format: date-time, nullable: true }
         url_pagamento:
           type: string
           nullable: true
           description: Link do Checkout Pro do Mercado Pago (null no gateway simulado)
+    PagamentoOperador:
+      type: object
+      properties:
+        id_pagamento: { type: integer }
+        id_pedido: { type: integer }
+        metodo_pagamento: { type: string }
+        valor: { type: number }
+        status:
+          type: string
+          enum: [PENDENTE, APROVADO, RECUSADO, REEMBOLSAR]
+        data_pagamento: { type: string, format: date-time, nullable: true }
+        id_pagamento_gateway: { type: string, nullable: true, description: Id do pagamento no Mercado Pago }
     Health:
       type: object
       properties:

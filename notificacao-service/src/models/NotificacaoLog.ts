@@ -6,6 +6,9 @@ interface NotificacaoLogAttributes {
   id_pedido: number;
   tipo: string;
   destinatario: string;
+  assunto?: string | null;
+  texto?: string | null;
+  tentativas?: number;
   status: string;
   erro?: string | null;
   enviado_em?: Date | null;
@@ -14,7 +17,7 @@ interface NotificacaoLogAttributes {
 
 type NotificacaoLogCreationAttributes = Optional<
   NotificacaoLogAttributes,
-  'id_notificacao' | 'status' | 'erro' | 'enviado_em' | 'criado_em'
+  'id_notificacao' | 'assunto' | 'texto' | 'tentativas' | 'status' | 'erro' | 'enviado_em' | 'criado_em'
 >;
 
 export class NotificacaoLog
@@ -25,6 +28,9 @@ export class NotificacaoLog
   declare id_pedido: number;
   declare tipo: string;
   declare destinatario: string;
+  declare assunto: string | null;
+  declare texto: string | null;
+  declare tentativas: number;
   declare status: string;
   declare erro: string | null;
   declare enviado_em: Date | null;
@@ -37,6 +43,9 @@ NotificacaoLog.init(
     id_pedido: { type: DataTypes.INTEGER, allowNull: false },
     tipo: { type: DataTypes.STRING(30), allowNull: false },
     destinatario: { type: DataTypes.STRING(255), allowNull: false },
+    assunto: { type: DataTypes.STRING(255), allowNull: true },
+    texto: { type: DataTypes.TEXT, allowNull: true },
+    tentativas: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     status: { type: DataTypes.STRING(20), defaultValue: 'ENVIADO' },
     erro: { type: DataTypes.STRING(255), allowNull: true },
     enviado_em: { type: DataTypes.DATE, allowNull: true },

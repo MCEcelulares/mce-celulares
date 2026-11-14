@@ -1,0 +1,74 @@
+name: CD
+
+# Publica as imagens dos 5 serviços no GitHub Container Registry a cada tag de versão (v1.0.0, v1.1.0...)
+# e, se o servidor estiver configurado, faz o deploy por SSH com verificação de saúde e rollback automático.
+# Estratégia e limites: documentacao-arquiteturial/ADRs/ADR-014-cd-com-rollback-por-tag.md
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Só publica se o CI da mesma versão passaria: roda de novo a tipagem e os testes que não precisam de banco.
+  verificar:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        servico: [notificacao-service, vendas-service, pagamento-service]
+    defaults:
+      run:
+        working-directory: ${{ matrix.servico }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.servico }}/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx jest --runInBand
+
+  publicar-imagens:
+    needs: verificar
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        servico: [identidade-service, catalogo-service, vendas-service, pagamento-service, notificacao-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build e push (tag da versão e hash do commit)
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGEM="ghcr.io/${OWNER}/mce-${{ matrix.servico }}"
+          docker build -t "${IMAGEM}:${GITHUB_REF_NAME}" -t "${IMAGEM}:${GITHUB_SHA::12}" "./${{ matrix.servico }}"
+          docker push --all-tags "${IMAGEM}"
+
+  # Roda só se as variáveis do repositório DEPLOY_HOST, DEPLOY_USER e DEPLOY_PATH e o segredo DEPLOY_SSH_KEY existirem.
+  deploy:
+    needs: publicar-imagens
+    if: ${{ vars.DEPLOY_HOST != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy por SSH (aplica a tag; se a saúde falhar, volta sozinho para a anterior)
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null chave_ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > chave_ssh
+          ssh -i chave_ssh -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && REGISTRY_OWNER='${GITHUB_REPOSITORY_OWNER,,}' ./scripts/deploy.sh '${GITHUB_REF_NAME}'"

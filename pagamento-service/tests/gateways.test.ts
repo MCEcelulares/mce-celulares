@@ -168,9 +168,9 @@ describe('Mercado Pago — consultarPagamento', () => {
   const gateway = criarGatewayMercadoPago('APP_USR-token');
 
   it('lê status, referência externa e valor', async () => {
-    fetchMock.mockResolvedValue(resposta(200, { status: 'approved', external_reference: '77', transaction_amount: 125 }));
+    fetchMock.mockResolvedValue(resposta(200, { id: 999, status: 'approved', external_reference: '77', transaction_amount: 125 }));
 
-    expect(await gateway.consultarPagamento('999')).toEqual({ status: 'approved', externalReference: '77', valor: 125 });
+    expect(await gateway.consultarPagamento('999')).toEqual({ id: '999', status: 'approved', externalReference: '77', valor: 125 });
     expect(fetchMock.mock.calls[0][0]).toBe('https://api.mercadopago.com/v1/payments/999');
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer APP_USR-token');
   });
@@ -182,9 +182,9 @@ describe('Mercado Pago — consultarPagamento', () => {
 
     fetchMock.mockClear();
     fetchMock.mockRejectedValueOnce(new Error('ECONNRESET')).mockResolvedValueOnce(
-      resposta(200, { status: 'pending', transaction_amount: 10 })
+      resposta(200, { id: 5, status: 'pending', transaction_amount: 10 })
     );
-    expect(await gateway.consultarPagamento('5')).toEqual({ status: 'pending', externalReference: null, valor: 10 });
+    expect(await gateway.consultarPagamento('5')).toEqual({ id: '5', status: 'pending', externalReference: null, valor: 10 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
@@ -196,15 +196,15 @@ describe('Mercado Pago — buscarPagamentosPorReferencia', () => {
     fetchMock.mockResolvedValue(
       resposta(200, {
         results: [
-          { status: 'approved', external_reference: '77', transaction_amount: 125 },
-          { status: 'rejected', external_reference: '77', transaction_amount: 125 },
+          { id: 11, status: 'approved', external_reference: '77', transaction_amount: 125 },
+          { id: 10, status: 'rejected', external_reference: '77', transaction_amount: 125 },
         ],
       })
     );
 
     expect(await gateway.buscarPagamentosPorReferencia('77')).toEqual([
-      { status: 'approved', externalReference: '77', valor: 125 },
-      { status: 'rejected', externalReference: '77', valor: 125 },
+      { id: '11', status: 'approved', externalReference: '77', valor: 125 },
+      { id: '10', status: 'rejected', externalReference: '77', valor: 125 },
     ]);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.mercadopago.com/v1/payments/search?external_reference=77&sort=date_created&criteria=desc');

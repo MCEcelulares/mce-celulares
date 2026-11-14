@@ -3,21 +3,22 @@ import { Op } from 'sequelize';
 import { app } from '../src/app';
 import { Pedido, ItemPedido } from '../src/models';
 import * as catalogo from '../src/clients/catalogoClient';
-import { expirarPedidosVencidos } from '../src/jobs/expirarPedidos';
+import { sequelize } from '../src/config/database';
+import { expirarPedidosVencidos, recuperarPedidosOrfaos } from '../src/jobs/expirarPedidos';
 import { ErroHttp } from '../src/middlewares/errorHandler';
 import { tokenDe, bearer, servico, pedidoCom } from './helpers';
 
 const api = request(app);
 const pedidoMock = Pedido as unknown as Record<string, jest.Mock>;
 const itemPedidoMock = ItemPedido as unknown as Record<string, jest.Mock>;
-const reporEstoque = catalogo.reporEstoque as jest.Mock;
+const devolverReserva = catalogo.devolverReserva as jest.Mock;
 
 const cliente = bearer(tokenDe(5));
 const gestor = bearer(tokenDe(1, ['dashboard:ver']));
 
 beforeEach(() => {
   jest.resetAllMocks();
-  reporEstoque.mockResolvedValue(undefined);
+  devolverReserva.mockResolvedValue(undefined);
 });
 
 describe('expira_em', () => {
@@ -44,21 +45,21 @@ describe('expira_em', () => {
 });
 
 describe('corrida na troca de status', () => {
-  it('responde 409 e NÃO devolve estoque quando outra chamada mudou o pedido antes', async () => {
+  it('responde 409 e NÃO devolve a reserva quando outra chamada mudou o pedido antes', async () => {
     pedidoMock.findByPk.mockResolvedValue(pedidoCom({ status: 'PAGO' }));
     pedidoMock.update.mockResolvedValue([0]);
 
     const r = await api.patch('/pedidos/77/status').set(servico).send({ status: 'CANCELADO' });
 
     expect(r.status).toBe(409);
-    expect(reporEstoque).not.toHaveBeenCalled();
+    expect(devolverReserva).not.toHaveBeenCalled();
   });
 });
 
 describe('expiração de pedidos não pagos', () => {
   const agora = new Date('2026-10-28T13:00:00.000Z');
 
-  it('busca só pedidos aguardando pagamento anteriores ao limite e os cancela devolvendo o estoque', async () => {
+  it('busca só pedidos aguardando pagamento anteriores ao limite e os cancela devolvendo a reserva do pedido', async () => {
     pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }]);
     pedidoMock.findByPk.mockResolvedValue(pedidoCom());
     pedidoMock.update.mockResolvedValue([1]);
@@ -76,10 +77,10 @@ describe('expiração de pedidos não pagos', () => {
       { status: 'CANCELADO' },
       { where: { id_pedido: 77, status: 'AGUARDANDO_PAGAMENTO' } }
     );
-    expect(reporEstoque.mock.calls).toEqual([[10, 2], [11, 1]]);
+    expect(devolverReserva.mock.calls).toEqual([[77]]);
   });
 
-  it('não cancela nem devolve estoque se o pedido foi pago no meio da rotina', async () => {
+  it('não cancela nem devolve a reserva se o pedido foi pago no meio da rotina', async () => {
     pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }, { id_pedido: 78 }]);
     pedidoMock.findByPk
       .mockResolvedValueOnce(pedidoCom({ status: 'PAGO' })) // já pago quando foi relido
@@ -87,7 +88,7 @@ describe('expiração de pedidos não pagos', () => {
     pedidoMock.update.mockResolvedValue([0]);
 
     expect(await expirarPedidosVencidos(agora)).toBe(0);
-    expect(reporEstoque).not.toHaveBeenCalled();
+    expect(devolverReserva).not.toHaveBeenCalled();
   });
 
   it('uma falha em um pedido não impede os outros', async () => {
@@ -100,14 +101,14 @@ describe('expiração de pedidos não pagos', () => {
     expect(await expirarPedidosVencidos(agora)).toBe(1);
   });
 
-  it('com a devolução de estoque falhando o pedido continua cancelado (fica em métrica/log)', async () => {
+  it('com a devolução da reserva falhando o pedido continua cancelado (fica em métrica/log)', async () => {
     pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }]);
     pedidoMock.findByPk.mockResolvedValue(pedidoCom());
     pedidoMock.update.mockResolvedValue([1]);
-    reporEstoque.mockRejectedValue(new ErroHttp(502, 'falha'));
+    devolverReserva.mockRejectedValue(new ErroHttp(502, 'falha'));
 
     expect(await expirarPedidosVencidos(agora)).toBe(1);
-    expect(reporEstoque).toHaveBeenCalledTimes(2);
+    expect(devolverReserva).toHaveBeenCalledTimes(1);
   });
 
   it('PEDIDO_EXPIRA_MINUTOS=0 não consulta nada', async () => {
@@ -115,6 +116,82 @@ describe('expiração de pedidos não pagos', () => {
     try {
       expect(await expirarPedidosVencidos(agora)).toBe(0);
       expect(pedidoMock.findAll).not.toHaveBeenCalled();
+    } finally {
+      process.env.PEDIDO_EXPIRA_MINUTOS = '30';
+    }
+  });
+});
+
+describe('recuperação de pedidos órfãos', () => {
+  const agora = new Date('2026-10-28T13:00:00.000Z');
+  const orfao = (id = 77) => pedidoCom({ id_pedido: id, ativo: false });
+
+  beforeEach(() => {
+    (sequelize as unknown as Record<string, jest.Mock>).transaction.mockImplementation(async (cb: (t: unknown) => unknown) => cb({ id: 'tx' }));
+  });
+
+  it('busca só pedidos invisíveis e aguardando pagamento anteriores ao prazo (padrão 10 min)', async () => {
+    pedidoMock.findAll.mockResolvedValue([]);
+
+    expect(await recuperarPedidosOrfaos(agora)).toBe(0);
+
+    const consulta = pedidoMock.findAll.mock.calls[0][0];
+    expect(consulta.where).toEqual({
+      status: 'AGUARDANDO_PAGAMENTO',
+      ativo: false,
+      data: { [Op.lt]: new Date('2026-10-28T12:50:00.000Z') },
+    });
+    expect(consulta.limit).toBe(50);
+  });
+
+  it('o prazo é configurável com PEDIDO_ORFAO_MINUTOS', async () => {
+    process.env.PEDIDO_ORFAO_MINUTOS = '3';
+    try {
+      pedidoMock.findAll.mockResolvedValue([]);
+      await recuperarPedidosOrfaos(agora);
+      expect(pedidoMock.findAll.mock.calls[0][0].where.data).toEqual({ [Op.lt]: new Date('2026-10-28T12:57:00.000Z') });
+    } finally {
+      delete process.env.PEDIDO_ORFAO_MINUTOS;
+    }
+  });
+
+  it('devolve a reserva e só então apaga o pedido invisível', async () => {
+    pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }]);
+    pedidoMock.findByPk.mockResolvedValue(orfao());
+
+    expect(await recuperarPedidosOrfaos(agora)).toBe(1);
+
+    expect(devolverReserva).toHaveBeenCalledWith(77);
+    expect(pedidoMock.destroy).toHaveBeenCalledWith(expect.objectContaining({ where: { id_pedido: 77, ativo: false } }));
+    expect(devolverReserva.mock.invocationCallOrder[0]).toBeLessThan(pedidoMock.destroy.mock.invocationCallOrder[0]);
+  });
+
+  it('se a devolução falhar, NÃO apaga o pedido (tenta de novo na próxima rodada) e segue com os outros', async () => {
+    pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }, { id_pedido: 78 }]);
+    pedidoMock.findByPk.mockResolvedValueOnce(orfao(77)).mockResolvedValueOnce(orfao(78));
+    devolverReserva.mockRejectedValueOnce(new ErroHttp(503, 'Catálogo indisponível')).mockResolvedValueOnce(undefined);
+
+    expect(await recuperarPedidosOrfaos(agora)).toBe(1);
+
+    expect(pedidoMock.destroy).toHaveBeenCalledTimes(1);
+    expect(pedidoMock.destroy).toHaveBeenCalledWith(expect.objectContaining({ where: { id_pedido: 78, ativo: false } }));
+  });
+
+  it('não mexe em pedido que ficou visível ou sumiu entre a consulta e a recuperação', async () => {
+    pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }, { id_pedido: 78 }]);
+    pedidoMock.findByPk.mockResolvedValueOnce(pedidoCom({ ativo: true })).mockResolvedValueOnce(null);
+
+    expect(await recuperarPedidosOrfaos(agora)).toBe(0);
+    expect(devolverReserva).not.toHaveBeenCalled();
+    expect(pedidoMock.destroy).not.toHaveBeenCalled();
+  });
+
+  it('roda mesmo com a expiração desligada (PEDIDO_EXPIRA_MINUTOS=0)', async () => {
+    process.env.PEDIDO_EXPIRA_MINUTOS = '0';
+    try {
+      pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }]);
+      pedidoMock.findByPk.mockResolvedValue(orfao());
+      expect(await recuperarPedidosOrfaos(agora)).toBe(1);
     } finally {
       process.env.PEDIDO_EXPIRA_MINUTOS = '30';
     }

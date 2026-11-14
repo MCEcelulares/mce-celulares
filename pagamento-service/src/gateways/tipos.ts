@@ -17,6 +17,8 @@ export interface Cobranca {
 }
 
 export interface PagamentoExterno {
+  // id do pagamento no gateway.
+  id: string;
   status: string;
   externalReference: string | null;
   valor: number;

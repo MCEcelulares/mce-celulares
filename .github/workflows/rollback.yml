@@ -1,0 +1,30 @@
+name: Rollback
+
+# Volta o servidor para uma versão já publicada (ou, sem informar, para a versão anterior ao último deploy).
+# Executar em: Actions > Rollback > Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a restaurar (ex.: v1.2.0). Vazio = versão anterior ao último deploy"
+        required: false
+        default: ""
+
+jobs:
+  rollback:
+    if: ${{ vars.DEPLOY_HOST != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback por SSH
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          install -m 600 /dev/null chave_ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > chave_ssh
+          ssh -i chave_ssh -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && REGISTRY_OWNER='${GITHUB_REPOSITORY_OWNER,,}' ./scripts/rollback.sh '${TAG}'"

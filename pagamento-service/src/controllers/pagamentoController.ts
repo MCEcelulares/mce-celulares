@@ -10,6 +10,14 @@ export async function registrar(req: AuthRequest, res: Response, next: NextFunct
   }
 }
 
+export async function listar(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json(await pagamentoService.listarPagamentos(req.query as never));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function buscar(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     res.status(200).json(await pagamentoService.buscarPagamento(req.usuarioAutenticado!, Number(req.params.idPedido)));

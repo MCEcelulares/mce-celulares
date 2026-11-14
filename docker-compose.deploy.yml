@@ -1,0 +1,14 @@
+# Sobreposição para servidor: usa as imagens publicadas pelo CD em vez de construir no local.
+# Uso: REGISTRY_OWNER=<dono> TAG=v1.0.0 docker compose -f docker-compose.yml -f docker-compose.deploy.yml up -d --no-build
+# (scripts/deploy.sh e scripts/rollback.sh fazem isso e conferem a saúde).
+services:
+  identidade:
+    image: ghcr.io/${REGISTRY_OWNER:?defina REGISTRY_OWNER}/mce-identidade-service:${TAG:?defina TAG}
+  catalogo:
+    image: ghcr.io/${REGISTRY_OWNER:?defina REGISTRY_OWNER}/mce-catalogo-service:${TAG:?defina TAG}
+  vendas:
+    image: ghcr.io/${REGISTRY_OWNER:?defina REGISTRY_OWNER}/mce-vendas-service:${TAG:?defina TAG}
+  pagamento:
+    image: ghcr.io/${REGISTRY_OWNER:?defina REGISTRY_OWNER}/mce-pagamento-service:${TAG:?defina TAG}
+  notificacao:
+    image: ghcr.io/${REGISTRY_OWNER:?defina REGISTRY_OWNER}/mce-notificacao-service:${TAG:?defina TAG}

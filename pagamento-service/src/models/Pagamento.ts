@@ -1,8 +1,10 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import { sequelize } from '../config/database';
 
-export const STATUS_PAGAMENTO = ['PENDENTE', 'APROVADO', 'RECUSADO'] as const;
-export type StatusPagamento = (typeof STATUS_PAGAMENTO)[number];
+import { StatusPagamento } from './statusPagamento';
+
+export { STATUS_PAGAMENTO } from './statusPagamento';
+export type { StatusPagamento } from './statusPagamento';
 
 interface PagamentoAttributes {
   id_pagamento: number;
@@ -14,11 +16,12 @@ interface PagamentoAttributes {
   status: StatusPagamento;
   id_externo?: string | null;
   url_pagamento?: string | null;
+  id_pagamento_gateway?: string | null;
 }
 
 type PagamentoCreationAttributes = Optional<
   PagamentoAttributes,
-  'id_pagamento' | 'data_pagamento' | 'status' | 'id_externo' | 'url_pagamento'
+  'id_pagamento' | 'data_pagamento' | 'status' | 'id_externo' | 'url_pagamento' | 'id_pagamento_gateway'
 >;
 
 export class Pagamento
@@ -34,6 +37,8 @@ export class Pagamento
   declare status: StatusPagamento;
   declare id_externo: string | null;
   declare url_pagamento: string | null;
+  // id do pagamento no gateway (Mercado Pago), para localizar a transação ao reembolsar.
+  declare id_pagamento_gateway: string | null;
 }
 
 Pagamento.init(
@@ -47,6 +52,7 @@ Pagamento.init(
     status: { type: DataTypes.STRING(20), defaultValue: 'PENDENTE' },
     id_externo: { type: DataTypes.STRING(100), allowNull: true },
     url_pagamento: { type: DataTypes.STRING(500), allowNull: true },
+    id_pagamento_gateway: { type: DataTypes.STRING(100), allowNull: true },
   },
   { sequelize, modelName: 'Pagamento', tableName: 'pagamento', timestamps: false }
 );

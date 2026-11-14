@@ -2,7 +2,8 @@ import { Router } from 'express';
 import * as pagamentoController from '../controllers/pagamentoController';
 import { autenticar } from '../middlewares/authMiddleware';
 import { validar } from '../middlewares/validate';
-import { registrarPagamentoSchema, idPedidoParamSchema } from '../validators/pagamentoValidators';
+import { exigirPermissao } from '../middlewares/permissaoMiddleware';
+import { registrarPagamentoSchema, idPedidoParamSchema, listarPagamentosQuerySchema } from '../validators/pagamentoValidators';
 import { limitarPagamento } from '../utils/rateLimit';
 
 const router = Router();
@@ -20,6 +21,9 @@ router.post(
   validar(idPedidoParamSchema, 'params'),
   pagamentoController.sincronizar
 );
+
+// Visão do operador (pagamentos aprovados, a reembolsar...). Fica antes de /:idPedido.
+router.get('/', autenticar, exigirPermissao('pedidos:listar-todos'), validar(listarPagamentosQuerySchema, 'query'), pagamentoController.listar);
 
 router.get('/:idPedido', autenticar, validar(idPedidoParamSchema, 'params'), pagamentoController.buscar);
 

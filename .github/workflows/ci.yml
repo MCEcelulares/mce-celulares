@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        servico: [notificacao-service, catalogo-service, vendas-service, pagamento-service]
+        servico: [identidade-service, notificacao-service, catalogo-service, vendas-service, pagamento-service]
     defaults:
       run:
         working-directory: ${{ matrix.servico }}
@@ -52,23 +52,28 @@ jobs:
           echo "DB_PASSWORD=$DB_PASSWORD" >> "$GITHUB_ENV"
           echo "DB_NAME=$DB_NAME" >> "$GITHUB_ENV"
           npx sequelize-cli db:migrate
+      - name: Seed (cargos e permissões que os testes do Identidade exigem)
+        if: matrix.servico == 'identidade-service'
+        run: npx sequelize-cli db:seed:all
       - run: npx jest --runInBand
 
-  # Os contratos precisam ser YAML válido.
+  # Os contratos precisam ser YAML válido e bater com as rotas do código (nenhuma rota sem documentação).
   contratos:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          python3 - <<'PY'
-          import glob, yaml
-          arquivos = sorted(glob.glob('apis/*.yaml'))
-          for arquivo in arquivos:
-              with open(arquivo, encoding='utf-8') as f:
-                  yaml.safe_load(f)
-              print('válido:', arquivo)
-          assert arquivos, 'nenhum contrato encontrado'
-          PY
+      - run: pip install pyyaml
+      - run: python3 scripts/verificar-contratos.py
+
+  # O gateway precisa ter configuração válida (e o /interno do Catálogo bloqueado).
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: nginx -t
+        run: docker run --rm -v "$PWD/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:alpine nginx -t
+      - name: /catalogo/interno/ bloqueado no nginx.conf
+        run: grep -qF 'location ~ ^/catalogo/interno(/|$) {' infra/nginx/nginx.conf
 
   # Garante que a imagem de cada serviço compila no Linux (pega package-lock fora de sincronia com o `npm ci` do Docker).
   imagens:
@@ -76,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        servico: [notificacao-service, catalogo-service, vendas-service, pagamento-service]
+        servico: [identidade-service, notificacao-service, catalogo-service, vendas-service, pagamento-service]
     steps:
       - uses: actions/checkout@v4
       - run: docker build ./${{ matrix.servico }}

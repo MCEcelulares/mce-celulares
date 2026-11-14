@@ -1,15 +1,16 @@
 openapi: 3.0.3
 info:
   title: Serviço Vendas — MCEcelulares
-  version: "1.3.0"
+  version: "1.4.0"
   description: >-
     Carrinho, criação e acompanhamento de pedidos. Ao criar o pedido o serviço
     valida usuário e endereço no Identidade (repassando o token do usuário),
-    confere preço e estoque no Catálogo, baixa o estoque e publica
-    pedido.criado no Redis (contrato no ADR-008). Se algum passo falhar depois
-    de reservar estoque, a reserva é devolvida ao Catálogo. Pedido sem pagamento
-    expira (PEDIDO_EXPIRA_MINUTOS, padrão 30): é cancelado e o estoque volta ao
-    Catálogo. Há limite de requisições por IP (429).
+    confere preço e estoque no Catálogo, reserva o estoque do pedido (tudo ou
+    nada, ADR-009) e publica pedido.criado no Redis (contrato no ADR-008). O
+    pedido só fica visível depois da reserva; se ela falhar, o pedido é apagado, e
+    um pedido que ficou pela metade é recuperado por uma rotina (a reserva volta
+    ao Catálogo). Pedido sem pagamento expira (PEDIDO_EXPIRA_MINUTOS, padrão 30):
+    é cancelado e a reserva volta ao Catálogo. Há limite de requisições por IP (429).
   license:
     name: UNLICENSED
 servers:
@@ -140,9 +141,11 @@ paths:
       summary: Cria um pedido a partir do carrinho (RF28)
       description: >-
         Valida o usuário e o endereço no Identidade, reconfere preço e estoque no
-        Catálogo, baixa o estoque, grava o pedido com cópia (snapshot) de itens,
-        endereço e dados do cliente, encerra o carrinho e publica
-        pedido.criado. O frete ainda não é calculado (valor_frete = 0).
+        Catálogo, grava o pedido (invisível) com cópia (snapshot) de itens,
+        endereço e dados do cliente, reserva o estoque do pedido no Catálogo (tudo
+        ou nada), torna o pedido visível, encerra o carrinho e publica
+        pedido.criado. Sem estoque, responde 409 e nada fica gravado. O frete
+        ainda não é calculado (valor_frete = 0).
       requestBody:
         required: true
         content:
@@ -324,8 +327,9 @@ paths:
         e, para CANCELADO, "pedidos:cancelar". Fluxo permitido:
         AGUARDANDO_PAGAMENTO → PAGO | CANCELADO; PAGO → ENVIADO | CANCELADO;
         ENVIADO → ENTREGUE. Repetir o status atual responde 200 sem alterar nada.
-        Ao cancelar, o estoque de cada item é devolvido ao Catálogo (melhor
-        esforço; falhas são registradas em log e na métrica
+        Ao cancelar, a reserva do pedido é devolvida ao Catálogo (idempotente, com
+        2 tentativas; se ainda assim falhar, o pedido continua cancelado e a falha
+        é registrada em log e na métrica
         vendas_eventos_total{evento="estoque_nao_devolvido"}). A resposta traz o
         cliente (nome e e-mail) para o Pagamento montar o evento
         pagamento.confirmado.

@@ -34,3 +34,9 @@ O RF41 exige integrar com o Mercado Pago e o RF42, gerar uma preferência de pag
 - **Link com prazo:** a preferência é criada com `expires` e `expiration_date_from/to`, usando o `expira_em` informado pelo Vendas (ADR-009), para o link deixar de valer quando o pedido seria cancelado por falta de pagamento.
 - **Roteiro de teste e verificação do token:** `pagamento-service/README.md` descreve contas de teste (vendedor e comprador), cartões de teste (o resultado depende do nome do titular) e o uso de um túnel para o webhook; `npm run mp:verificar` cria uma preferência de R$ 1,00 (sem cobrança) e testa a busca, para confirmar que o token funciona antes da primeira compra. A página oficial de compra de teste do Checkout Pro não manda usar `sandbox_init_point`, então o serviço usa o `init_point` da preferência (e só cai para o de sandbox se o outro não vier).
 - **Ainda não exercitado com credenciais reais.** Os formatos usados foram conferidos na documentação oficial e cobertos por testes com respostas simuladas.
+
+## Atualização (2026-11-05) — reembolso pendente, id do gateway e listagem
+- **Pagamento aprovado depois do cancelamento (ex.: o pedido expirou):** o pagamento passa a `REEMBOLSAR` (antes só havia um log de erro), para o operador devolver o dinheiro no Mercado Pago. O reembolso em si continua manual. A troca é condicional (`status != 'APROVADO'`), então um pagamento já aprovado nunca é sobrescrito.
+- **`id_pagamento_gateway`:** o id do pagamento no Mercado Pago é gravado ao confirmar e ao marcar `REEMBOLSAR`, para localizar a transação ao reembolsar.
+- **Listagem para o operador:** `GET /pagamentos` (permissão `pedidos:listar-todos`), com filtro por `status` e paginação. Mostra o `id_pagamento_gateway` e nunca o link de pagamento.
+- **Limite do teste ponta a ponta:** o `REEMBOLSAR` só nasce de um pagamento aprovado no Mercado Pago real; com o gateway simulado ele é coberto apenas pelos testes unitários.
