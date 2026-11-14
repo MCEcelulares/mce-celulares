@@ -30,7 +30,7 @@ Complementa os SLOs (`qualidade-observabilidade/quality-scenarios-slo.md`) e os 
 `docker compose ps <serviço>_db`; `docker compose logs --tail=100 <serviço>_db`. Subir: `docker compose up -d <serviço>_db`. Os dados ficam no volume `<serviço>_db_data`; **nunca** rode `docker compose down -v` (apaga os volumes). Quando o banco voltar o serviço se recupera sozinho (o `/health` volta a `ok`).
 
 ### 3.4 Redis fora (`status: degradado`)
-Efeitos: Catálogo lê direto do banco (mais lento); **eventos `pedido.criado`/`pedido.pago` não são publicados**, então e-mails não saem (métrica `evento_nao_publicado` sobe no Vendas e no Pagamento). Pedidos e pagamentos continuam funcionando. `docker compose up -d redis`; depois, os pedidos criados durante a queda **não geram e-mail retroativo**: avise o suporte se for relevante.
+Efeitos: Catálogo lê direto do banco (mais lento); **os eventos `pedido.criado` e `pagamento.confirmado` não são publicados**, então e-mails não saem (métrica `evento_nao_publicado` sobe no Vendas e no Pagamento). Pedidos e pagamentos continuam funcionando. `docker compose up -d redis`; depois, os pedidos criados durante a queda **não geram e-mail retroativo**: avise o suporte se for relevante.
 
 ### 3.5 Checkout falhando com 503 ("… indisponível no momento")
 1. Descubra **qual** serviço: a mensagem diz (`Catálogo`, `Identidade`, `Vendas`, `Mercado Pago`).
