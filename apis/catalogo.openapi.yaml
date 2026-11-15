@@ -238,6 +238,30 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
 
+    delete:
+      tags: [Produtos]
+      operationId: inativarProduto
+      summary: Exclui (inativa) o produto
+      description: >-
+        Exige "catalogo:gerenciar". Exclusão lógica: o produto passa a ativo=false e some da leitura
+        pública (equivale a PATCH ativo=false). Repetir a chamada em produto já inativo também responde 204.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204":
+          description: Produto inativado
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /produtos/{id}/imagem:
     post:
       tags: [Produtos]
@@ -298,6 +322,75 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
 
+    put:
+      tags: [Produtos]
+      operationId: substituirImagemDoProduto
+      summary: Envia a imagem do produto (mesmo comportamento do POST)
+      description: Equivalente ao POST desta rota; enviar o arquivo substitui a imagem atual.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [imagem]
+              properties:
+                imagem: { type: string, format: binary }
+      responses:
+        "200":
+          description: Imagem salva
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_produto: { type: integer }
+                  imagem: { type: string, example: /catalogo/imagens/0b7a3c3e-1111-4222-8333-444455556666.png }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "413":
+          description: Imagem maior que 2 MB
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "415":
+          description: Tipo não aceito, ou o conteúdo não é uma imagem JPEG, PNG ou WEBP válida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+    delete:
+      tags: [Produtos]
+      operationId: removerImagemDoProduto
+      summary: Remove a imagem do produto
+      description: Exige "catalogo:gerenciar". Apaga o arquivo do disco. Responde 204 também se o produto já não tinha imagem.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204":
+          description: Imagem removida
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /produtos/{id}/estoque:
     patch:
       tags: [Produtos]
@@ -338,6 +431,53 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
 
+  /produtos/{id}/estoque/reposicao:
+    post:
+      tags: [Interno]
+      operationId: reporEstoque
+      summary: Soma ao estoque (token de serviço) — rota avulsa, o Vendas usa /interno/reservas
+      description: >-
+        Autenticada pelo token de serviço (SERVICE_TOKEN, enviado como Bearer) e, ao contrário de /interno/*,
+        NÃO é bloqueada no gateway. Soma a quantidade ao estoque, inclusive de produto inativo. O Vendas não a usa
+        mais: a devolução de pedidos cancelados é feita por pedido em /interno/reservas/{idPedido}/devolucao (ADR-009).
+      security:
+        - serviceToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantidade]
+              properties:
+                quantidade: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Estoque somado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_produto: { type: integer }
+                  estoque: { type: integer, description: Saldo depois da reposição }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401":
+          description: Token de serviço ausente ou inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Produto não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /interno/produtos:
     get:
       tags: [Interno]
@@ -346,7 +486,7 @@ paths:
       description: >-
         Rota interna: autenticada pelo token de serviço (SERVICE_TOKEN, enviado
         como Bearer) e bloqueada no gateway (/catalogo/interno/ responde 404).
-        Sem SERVICE_TOKEN configurado a rota fica desligada (404).
+        Sem SERVICE_TOKEN configurado as rotas /interno respondem 503.
       security:
         - serviceToken: []
       parameters:
@@ -530,6 +670,29 @@ paths:
         "403": { $ref: "#/components/responses/SemPermissao" }
 
   /categorias/{id}:
+    get:
+      tags: [Categorias]
+      operationId: buscarCategoria
+      summary: Detalhe de categoria ativa
+      description: Com token que tenha "catalogo:gerenciar" também mostra categoria inativa.
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Encontrada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Categoria" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "404":
+          description: Categoria não existe (ou está inativa e o token não tem permissão para vê-la)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
     patch:
       tags: [Categorias]
       operationId: atualizarCategoria
@@ -555,6 +718,34 @@ paths:
         "403": { $ref: "#/components/responses/SemPermissao" }
         "404":
           description: Categoria não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+    delete:
+      tags: [Categorias]
+      operationId: excluirCategoria
+      summary: Exclui categoria (só se nenhum produto a usar)
+      description: >-
+        Exige "catalogo:gerenciar". Exclusão física. Se houver produtos ligados responde 409; nesse caso
+        mova os produtos ou inative (PATCH ativo=false).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204":
+          description: Excluída
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Categoria não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Há produtos ligados a ela
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
@@ -599,6 +790,29 @@ paths:
         "403": { $ref: "#/components/responses/SemPermissao" }
 
   /marcas/{id}:
+    get:
+      tags: [Marcas]
+      operationId: buscarMarca
+      summary: Detalhe de marca ativa
+      description: Com token que tenha "catalogo:gerenciar" também mostra marca inativa.
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Encontrada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Marca" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "404":
+          description: Marca não existe (ou está inativa e o token não tem permissão para vê-la)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
     patch:
       tags: [Marcas]
       operationId: atualizarMarca
@@ -624,6 +838,34 @@ paths:
         "403": { $ref: "#/components/responses/SemPermissao" }
         "404":
           description: Marca não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+    delete:
+      tags: [Marcas]
+      operationId: excluirMarca
+      summary: Exclui marca (só se nenhum produto a usar)
+      description: >-
+        Exige "catalogo:gerenciar". Exclusão física. Se houver produtos ligados responde 409; nesse caso
+        mova os produtos ou inative (PATCH ativo=false).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204":
+          description: Excluída
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/SemPermissao" }
+        "404":
+          description: Marca não existe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: Há produtos ligados a ela
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }

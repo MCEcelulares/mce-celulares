@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCEcelulares — Documentação das APIs</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+  <script>
+    // Os contratos ficam em apis/*.openapi.yaml (montados em /docs/apis/). O seletor no topo troca de serviço.
+    window.ui = SwaggerUIBundle({
+      dom_id: '#swagger-ui',
+      urls: [
+        { name: 'Identidade', url: 'apis/identidade.openapi.yaml' },
+        { name: 'Catálogo', url: 'apis/catalogo.openapi.yaml' },
+        { name: 'Vendas', url: 'apis/vendas.openapi.yaml' },
+        { name: 'Pagamento', url: 'apis/pagamento.openapi.yaml' },
+        { name: 'Notificação', url: 'apis/notificacao.openapi.yaml' },
+      ],
+      'urls.primaryName': 'Catálogo',
+      deepLinking: true,
+      persistAuthorization: true,
+    });
+  </script>
+</body>
+</html>
