@@ -224,5 +224,7 @@ services:
         - "8080:80"
       volumes:
         - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+        - ./infra/swagger/index.html:/usr/share/nginx/docs/index.html:ro
+        - ./apis:/usr/share/nginx/docs/apis:ro
       networks:
         - backend
