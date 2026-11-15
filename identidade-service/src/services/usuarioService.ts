@@ -1,6 +1,8 @@
 import bcrypt from "bcrypt";
-import { Op, UniqueConstraintError, WhereOptions } from "sequelize";
-import { Usuario, Cargo, UsuarioCargo } from "../models";
+import type { Usuario } from "../models";
+import * as usuarioRepository from "../repositories/usuarioRepository";
+import * as cargoRepository from "../repositories/cargoRepository";
+import { RegistroDuplicadoError } from "../repositories/erros";
 import { ErroHttp } from "../middlewares/errorHandler";
 import { logger } from "../utils/logger";
 import { registrarEvento } from "../utils/metricas";
@@ -26,7 +28,7 @@ async function montarPerfil(usuario: Usuario) {
 }
 
 async function obterUsuarioOuFalhar(id: number) {
-  const usuario = await Usuario.findByPk(id);
+  const usuario = await usuarioRepository.buscarPorId(id);
   if (!usuario) {
     throw new ErroHttp(404, "Usuário não existe");
   }
@@ -35,27 +37,13 @@ async function obterUsuarioOuFalhar(id: number) {
 
 async function ehUltimoAdministradorAtivo(usuario: Usuario): Promise<boolean> {
   if (!usuario.ativo) return false;
-  const cargoAdmin = await Cargo.findOne({ where: { nome: nomeCargoAdmin } });
+  const cargoAdmin = await cargoRepository.buscarPorNome(nomeCargoAdmin);
   if (!cargoAdmin) return false;
 
-  const ehAdmin =
-    (await UsuarioCargo.count({
-      where: { id_usuario: usuario.id_usuario, id_cargo: cargoAdmin.id_cargo },
-    })) > 0;
+  const ehAdmin = await usuarioRepository.possuiCargo(usuario.id_usuario, cargoAdmin.id_cargo);
   if (!ehAdmin) return false;
 
-  const adminsAtivos = await Usuario.count({
-    where: { ativo: true },
-    include: [
-      {
-        model: Cargo,
-        as: "cargos",
-        where: { nome: nomeCargoAdmin },
-        required: true,
-      },
-    ],
-    distinct: true,
-  });
+  const adminsAtivos = await usuarioRepository.contarAtivosComCargo(nomeCargoAdmin);
   return adminsAtivos <= 1;
 }
 
@@ -64,7 +52,7 @@ export async function criarUsuario(dados: CriarUsuarioInput) {
 
   let usuario: Usuario;
   try {
-    usuario = await Usuario.create({
+    usuario = await usuarioRepository.criar({
       nome: dados.nome,
       email: dados.email,
       senha: senhaHash,
@@ -72,17 +60,15 @@ export async function criarUsuario(dados: CriarUsuarioInput) {
       telefone: dados.telefone,
     });
   } catch (err) {
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, "E-mail já cadastrado");
     }
     throw err;
   }
 
-  const cargoCliente = await Cargo.findOne({
-    where: { nome: nomeCargoPadrao },
-  });
+  const cargoCliente = await cargoRepository.buscarPorNome(nomeCargoPadrao);
   if (cargoCliente) {
-    await usuario.addCargo(cargoCliente);
+    await usuarioRepository.adicionarCargo(usuario, cargoCliente);
   }
 
   registrarEvento("cadastro");
@@ -96,7 +82,7 @@ export async function buscarUsuarioPorId(id: number) {
 
 export async function atualizarPerfil(id: number, dados: AtualizarPerfilInput) {
   const usuario = await obterUsuarioOuFalhar(id);
-  await usuario.update(dados);
+  await usuarioRepository.atualizar(usuario, dados);
   logger.info(
     { id_usuario: id, campos: Object.keys(dados) },
     "perfil atualizado",
@@ -111,9 +97,9 @@ export async function atualizarUsuarioComoAdmin(
 ) {
   const usuario = await obterUsuarioOuFalhar(id);
   try {
-    await usuario.update(dados);
+    await usuarioRepository.atualizar(usuario, dados);
   } catch (err) {
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, "E-mail já cadastrado");
     }
     throw err;
@@ -141,56 +127,22 @@ export async function alterarSenha(id: number, dados: AlterarSenhaInput) {
     throw new ErroHttp(401, "Senha atual incorreta");
   }
 
-  await usuario.update({ senha: await bcrypt.hash(dados.novaSenha, 10) });
+  await usuarioRepository.atualizar(usuario, { senha: await bcrypt.hash(dados.novaSenha, 10) });
   await revogarTodasAsSessoesSemFalhar(id);
   logger.info({ id_usuario: id }, "senha alterada");
 }
 
-export async function listarUsuarios({
-  page,
-  limit,
-  busca,
-  cargo,
-  ativo,
-}: ListarUsuariosQuery) {
-  const filtros: WhereOptions[] = [];
-  if (busca) {
-    filtros.push({
-      [Op.or]: [
-        { nome: { [Op.like]: `%${busca}%` } },
-        { email: { [Op.like]: `%${busca}%` } },
-      ],
-    });
-  }
-  if (ativo !== undefined) {
-    filtros.push({ ativo });
-  }
-
-  const { rows, count } = await Usuario.findAndCountAll({
-    where: filtros.length > 0 ? { [Op.and]: filtros } : {},
-    attributes: { exclude: ["senha"] },
-    include: [
-      {
-        model: Cargo,
-        as: "cargos",
-        attributes: ["id_cargo", "nome"],
-        through: { attributes: [] },
-        ...(cargo ? { where: { nome: cargo }, required: true } : {}),
-      },
-    ],
-    order: [["id_usuario", "ASC"]],
-    limit,
-    offset: (page - 1) * limit,
-    distinct: true,
-  });
+export async function listarUsuarios(consulta: ListarUsuariosQuery) {
+  const { page, limit } = consulta;
+  const { registros, total } = await usuarioRepository.listar(consulta);
 
   return {
-    dados: rows,
+    dados: registros,
     paginacao: {
       pagina: page,
       limite: limit,
-      total: count,
-      totalPaginas: Math.ceil(count / limit),
+      total,
+      totalPaginas: Math.ceil(total / limit),
     },
   };
 }
@@ -203,7 +155,7 @@ export async function definirCargos(
   const usuario = await obterUsuarioOuFalhar(idUsuario);
 
   const unicos = [...new Set(nomes)];
-  const cargos = await Cargo.findAll({ where: { nome: unicos } });
+  const cargos = await cargoRepository.buscarPorNomes(unicos);
   const inexistentes = unicos.filter((n) => !cargos.some((c) => c.nome === n));
   if (inexistentes.length > 0) {
     throw new ErroHttp(
@@ -222,7 +174,7 @@ export async function definirCargos(
     );
   }
 
-  await usuario.setCargos(cargos);
+  await usuarioRepository.definirCargos(usuario, cargos);
   logger.info(
     { id_usuario: idUsuario, cargos: unicos, alteradoPor },
     "cargos do usuário atualizados",
@@ -248,7 +200,7 @@ export async function alterarStatus(
     }
   }
 
-  await usuario.update({ ativo });
+  await usuarioRepository.atualizar(usuario, { ativo });
   if (!ativo) {
     await revogarTodasAsSessoesSemFalhar(idUsuario);
   }

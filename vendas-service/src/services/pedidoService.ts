@@ -1,11 +1,12 @@
-import { Order } from 'sequelize';
-import { sequelize } from '../config/database';
-import { EnderecoPedido, ItemPedido, Pedido, UsuarioPedido } from '../models';
+import type { Pedido } from '../models';
 import { StatusPedido } from '../models/statusPedido';
+import * as pedidoRepository from '../repositories/pedidoRepository';
+import * as carrinhoRepository from '../repositories/carrinhoRepository';
+import { comTransacao } from '../repositories/transacao';
 import { ErroHttp } from '../middlewares/errorHandler';
 import * as catalogo from '../clients/catalogoClient';
 import * as identidade from '../clients/identidadeClient';
-import { carregarCarrinhoAtivo, centavos } from './carrinhoService';
+import { centavos } from './carrinhoService';
 import { TokenPayload } from '../utils/jwt';
 import { publicarPedidoCriado } from '../utils/eventos';
 import { registrarEvento } from '../utils/metricas';
@@ -16,16 +17,6 @@ const PERMISSAO_VER_TODOS = 'pedidos:listar-todos';
 const PERMISSAO_ATUALIZAR_STATUS = 'pedidos:atualizar-status';
 const PERMISSAO_CANCELAR = 'pedidos:cancelar';
 
-const atributosCliente = ['id_usuario', 'nome', 'email', 'telefone'];
-
-const incluirDetalhe = [
-  { model: ItemPedido, as: 'itens' },
-  { model: EnderecoPedido, as: 'endereco' },
-  { model: UsuarioPedido, as: 'cliente', attributes: atributosCliente },
-];
-const ordemItens: Order = [[{ model: ItemPedido, as: 'itens' }, 'id_item', 'ASC']];
-
-// Fluxo do pedido (RF33). Repetir o status atual é aceito (o Pagamento pode repetir a chamada).
 const TRANSICOES: Record<StatusPedido, StatusPedido[]> = {
   AGUARDANDO_PAGAMENTO: ['PAGO', 'CANCELADO'],
   PAGO: ['ENVIADO', 'CANCELADO'],
@@ -34,7 +25,6 @@ const TRANSICOES: Record<StatusPedido, StatusPedido[]> = {
   CANCELADO: [],
 };
 
-// Pedido não pago expira e devolve o estoque (ADR-009). PEDIDO_EXPIRA_MINUTOS=0 desliga.
 export const minutosParaExpirar = () => Number(process.env.PEDIDO_EXPIRA_MINUTOS ?? 30);
 
 function expiraEm(pedido: Pedido): string | null {
@@ -48,7 +38,6 @@ function dadosDoCliente(pedido: Pedido) {
   return c ? { id_usuario: c.id_usuario, nome: c.nome, email: c.email, telefone: c.telefone } : null;
 }
 
-// Nunca expõe CPF nem id_envio_externo.
 export function paraResposta(pedido: Pedido) {
   const e = pedido.endereco;
   return {
@@ -107,12 +96,7 @@ async function devolverReservaDoPedido(idPedido: number) {
 
 // Apaga um pedido que nunca chegou a ficar visível (ativo=false): itens, endereço, cliente e o próprio pedido.
 async function descartarPedido(idPedido: number) {
-  await sequelize.transaction(async (transaction) => {
-    await ItemPedido.destroy({ where: { id_pedido: idPedido }, transaction });
-    await EnderecoPedido.destroy({ where: { id_pedido: idPedido }, transaction });
-    await UsuarioPedido.destroy({ where: { id_pedido: idPedido }, transaction });
-    await Pedido.destroy({ where: { id_pedido: idPedido, ativo: false }, transaction });
-  });
+  await comTransacao((transacao) => pedidoRepository.descartarInvisivel(idPedido, transacao));
 }
 
 // Usado quando a criação já falhou: o erro original é o que importa, então uma falha aqui só vira log.
@@ -131,7 +115,7 @@ export const minutosParaOrfao = () => Number(process.env.PEDIDO_ORFAO_MINUTOS ??
 // Recupera um pedido invisível antigo: devolve a reserva (se existir) e apaga o pedido. Se a devolução falhar,
 // lança o erro e o pedido fica para a próxima rodada (a reserva só é perdida se o pedido for apagado antes).
 export async function recuperarPedidoOrfao(id: number): Promise<boolean> {
-  const pedido = await Pedido.findByPk(id);
+  const pedido = await pedidoRepository.buscarPorId(id);
   if (!pedido || pedido.ativo) return false;
 
   await catalogo.devolverReserva(id);
@@ -156,7 +140,7 @@ function erroDaReserva(resultado: Exclude<catalogo.ResultadoReserva, { tipo: 'ok
 export async function criarPedido(usuario: TokenPayload, authorization: string, idEndereco: number) {
   const idUsuario = usuario.id_usuario;
 
-  const carrinho = await carregarCarrinhoAtivo(idUsuario);
+  const carrinho = await carrinhoRepository.buscarAtivoComItens(idUsuario);
   if (!carrinho || !carrinho.itens || carrinho.itens.length === 0) {
     throw new ErroHttp(422, 'Carrinho vazio ou não encontrado');
   }
@@ -185,47 +169,29 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
   const valorTotal = (linhas.reduce((soma, l) => soma + centavos(l.preco) * l.quantidade, 0) + centavos(valorFrete)) / 100;
 
   // 1) grava o pedido INVISÍVEL (ativo=false): o Catálogo reserva por id de pedido, então ele precisa existir antes.
-  const idPedido = await sequelize.transaction(async (transaction) => {
-    const pedido = await Pedido.create(
-      { valor_total: valorTotal, valor_frete: valorFrete, status: 'AGUARDANDO_PAGAMENTO', ativo: false },
-      { transaction }
-    );
-    await ItemPedido.bulkCreate(
-      linhas.map((l) => ({
-        id_pedido: pedido.id_pedido,
-        id_produto: l.id_produto,
-        nome_produto: l.nome.slice(0, 150),
-        quantidade: l.quantidade,
-        preco_unitario: l.preco,
-      })),
-      { transaction }
-    );
-    await EnderecoPedido.create(
+  const idPedido = await comTransacao((transacao) =>
+    pedidoRepository.gravarInvisivel(
       {
-        id_pedido: pedido.id_pedido,
-        endereco: endereco.endereco,
-        numero: endereco.numero,
-        complemento: endereco.complemento,
-        bairro: endereco.bairro,
-        cidade: endereco.cidade,
-        estado: endereco.estado,
-        cep: endereco.cep,
+        valor_total: valorTotal,
+        valor_frete: valorFrete,
+        itens: linhas.map((l) => ({
+          id_produto: l.id_produto,
+          nome_produto: l.nome,
+          quantidade: l.quantidade,
+          preco_unitario: l.preco,
+        })),
+        endereco,
+        cliente: {
+          id_usuario: idUsuario,
+          nome: perfil.nome,
+          email: perfil.email,
+          cpf: perfil.cpf as string,
+          telefone: perfil.telefone as string,
+        },
       },
-      { transaction }
-    );
-    await UsuarioPedido.create(
-      {
-        id_pedido: pedido.id_pedido,
-        id_usuario: idUsuario,
-        nome: perfil.nome,
-        email: perfil.email,
-        cpf: perfil.cpf as string,
-        telefone: perfil.telefone as string,
-      },
-      { transaction }
-    );
-    return pedido.id_pedido;
-  });
+      transacao
+    )
+  );
 
   // 2) reserva o estoque de todos os itens de uma vez (tudo ou nada). Sem reserva, o pedido invisível é apagado.
   let reserva: catalogo.ResultadoReserva;
@@ -252,9 +218,9 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
 
   // 3) torna o pedido visível e encerra o carrinho na mesma transação.
   try {
-    await sequelize.transaction(async (transaction) => {
-      await Pedido.update({ ativo: true }, { where: { id_pedido: idPedido }, transaction });
-      await carrinho.update({ ativo: false }, { transaction });
+    await comTransacao(async (transacao) => {
+      await pedidoRepository.tornarVisivel(idPedido, transacao);
+      await carrinhoRepository.encerrar(carrinho, transacao);
     });
   } catch (err) {
     try {
@@ -274,7 +240,7 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
     cliente: { nome: perfil.nome, email: perfil.email },
   });
 
-  const completo = await Pedido.findByPk(idPedido, { include: incluirDetalhe, order: ordemItens });
+  const completo = await pedidoRepository.buscarDetalhe(idPedido);
   return paraResposta(completo!);
 }
 
@@ -283,30 +249,22 @@ export async function listarPedidos(usuario: TokenPayload, filtros: FiltrosPedid
     throw new ErroHttp(403, 'Sem permissão para listar todos os pedidos');
   }
 
-  const cliente = {
-    model: UsuarioPedido,
-    as: 'cliente',
-    attributes: atributosCliente,
-    ...(filtros.todos ? {} : { where: { id_usuario: usuario.id_usuario }, required: true }),
-  };
-  const where = { ativo: true, ...(filtros.status && { status: filtros.status }) };
-
-  const { rows, count } = await Pedido.findAndCountAll({
-    where,
-    include: [cliente],
-    order: [['data', 'DESC'], ['id_pedido', 'DESC']],
-    limit: filtros.limite,
-    offset: (filtros.pagina - 1) * filtros.limite,
+  const { registros, total } = await pedidoRepository.listar({
+    idUsuario: filtros.todos ? undefined : usuario.id_usuario,
+    status: filtros.status,
+    limite: filtros.limite,
+    pagina: filtros.pagina,
   });
 
-  return { dados: rows.map(resumo), pagina: filtros.pagina, limite: filtros.limite, total: count };
+  return { dados: registros.map(resumo), pagina: filtros.pagina, limite: filtros.limite, total };
 }
 
 export type AutorDaMudanca = { servico: true } | { servico: false; usuario: TokenPayload };
 
 export async function buscarPedido(autor: AutorDaMudanca, id: number) {
-  const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
-  if (!pedido) throw new ErroHttp(404, 'Pedido não existe');
+  const pedido = await pedidoRepository.buscarDetalhe(id);
+  // Pedido invisível (ativo=false) é uma criação que ainda não terminou (ou ficou pela metade): não existe para ninguém.
+  if (!pedido || pedido.ativo === false) throw new ErroHttp(404, 'Pedido não existe');
 
   if (!autor.servico) {
     const dono = pedido.cliente?.id_usuario === autor.usuario.id_usuario;
@@ -318,8 +276,8 @@ export async function buscarPedido(autor: AutorDaMudanca, id: number) {
 }
 
 export async function atualizarStatus(id: number, novoStatus: StatusPedido, autor: AutorDaMudanca) {
-  const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
-  if (!pedido) throw new ErroHttp(404, 'Pedido não existe');
+  const pedido = await pedidoRepository.buscarDetalhe(id);
+  if (!pedido || pedido.ativo === false) throw new ErroHttp(404, 'Pedido não existe');
 
   if (!autor.servico) {
     const exigida = novoStatus === 'CANCELADO' ? PERMISSAO_CANCELAR : PERMISSAO_ATUALIZAR_STATUS;
@@ -335,11 +293,8 @@ export async function atualizarStatus(id: number, novoStatus: StatusPedido, auto
 
   // Troca condicional ao status lido: se outra chamada mudou o pedido no meio (ex.: pagamento x expiração),
   // só uma vence, e só quem vence devolve o estoque.
-  const [alterados] = await Pedido.update(
-    { status: novoStatus },
-    { where: { id_pedido: id, status: pedido.status } }
-  );
-  if (alterados === 0) throw new ErroHttp(409, 'O status do pedido mudou, tente novamente');
+  const alterado = await pedidoRepository.trocarStatus(id, pedido.status, novoStatus);
+  if (!alterado) throw new ErroHttp(409, 'O status do pedido mudou, tente novamente');
   pedido.status = novoStatus;
 
   if (novoStatus === 'CANCELADO') {
@@ -352,17 +307,25 @@ export async function atualizarStatus(id: number, novoStatus: StatusPedido, auto
 // Cancela um pedido que ficou tempo demais sem pagamento. Só age se ele AINDA estiver aguardando pagamento
 // (a troca é condicional), então nunca cancela um pedido pago no meio da corrida.
 export async function expirarPedido(id: number): Promise<boolean> {
-  const pedido = await Pedido.findByPk(id, { include: incluirDetalhe, order: ordemItens });
+  const pedido = await pedidoRepository.buscarDetalhe(id);
   if (!pedido || pedido.status !== 'AGUARDANDO_PAGAMENTO') return false;
 
-  const [alterados] = await Pedido.update(
-    { status: 'CANCELADO' },
-    { where: { id_pedido: id, status: 'AGUARDANDO_PAGAMENTO' } }
-  );
-  if (alterados === 0) return false;
+  const alterado = await pedidoRepository.trocarStatus(id, 'AGUARDANDO_PAGAMENTO', 'CANCELADO');
+  if (!alterado) return false;
 
   registrarEvento('pedido_expirado');
   logger.info({ idPedido: id }, 'pedido expirado por falta de pagamento');
   await devolverReservaDoPedido(id);
   return true;
+}
+
+// Ids para as rotinas agendadas (jobs/expirarPedidos.ts).
+export function idsDosPedidosVencidos(agora: Date, maximo = 50) {
+  const limite = new Date(agora.getTime() - minutosParaExpirar() * 60_000);
+  return pedidoRepository.buscarIdsVencidos(limite, maximo);
+}
+
+export function idsDosPedidosInvisiveisAntigos(agora: Date, maximo = 50) {
+  const limite = new Date(agora.getTime() - minutosParaOrfao() * 60_000);
+  return pedidoRepository.buscarIdsInvisiveisAntigos(limite, maximo);
 }
