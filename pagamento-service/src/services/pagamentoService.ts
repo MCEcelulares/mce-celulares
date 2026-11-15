@@ -1,5 +1,6 @@
-import { Op, UniqueConstraintError } from 'sequelize';
-import { Pagamento } from '../models';
+import type { Pagamento } from '../models';
+import * as pagamentoRepository from '../repositories/pagamentoRepository';
+import { RegistroDuplicadoError } from '../repositories/erros';
 import { ErroHttp } from '../middlewares/errorHandler';
 import * as vendas from '../clients/vendasClient';
 import { obterGateway } from '../gateways';
@@ -32,11 +33,8 @@ export function paraResposta(pagamento: Pagamento) {
 async function confirmar(pagamento: Pagamento, idGateway: string | null = null) {
   const pedido = await vendas.atualizarStatus(pagamento.id_pedido, 'PAGO');
 
-  const [reivindicado] = await Pagamento.update(
-    { status: 'APROVADO', data_pagamento: new Date(), id_pagamento_gateway: idGateway },
-    { where: { id_pagamento: pagamento.id_pagamento, status: { [Op.ne]: 'APROVADO' } } }
-  );
-  if (reivindicado === 0) return;
+  const reivindicado = await pagamentoRepository.reivindicarAprovacao(pagamento.id_pagamento, idGateway);
+  if (!reivindicado) return;
 
   pagamento.status = 'APROVADO';
   registrarEvento('pagamento_aprovado');
@@ -68,13 +66,8 @@ function paraRespostaOperador(pagamento: Pagamento) {
 
 // A rota exige a permissão pedidos:listar-todos (ver pagamentoRoutes).
 export async function listarPagamentos(filtros: FiltrosPagamento) {
-  const { rows, count } = await Pagamento.findAndCountAll({
-    where: filtros.status ? { status: filtros.status } : {},
-    order: [['id_pagamento', 'DESC']],
-    limit: filtros.limite,
-    offset: (filtros.pagina - 1) * filtros.limite,
-  });
-  return { dados: rows.map(paraRespostaOperador), pagina: filtros.pagina, limite: filtros.limite, total: count };
+  const { registros, total } = await pagamentoRepository.listar(filtros);
+  return { dados: registros.map(paraRespostaOperador), pagina: filtros.pagina, limite: filtros.limite, total };
 }
 
 export async function registrarPagamento(usuario: TokenPayload, dados: RegistrarPagamento) {
@@ -90,7 +83,7 @@ export async function registrarPagamento(usuario: TokenPayload, dados: Registrar
     throw new ErroHttp(422, 'Valor não confere com o pedido');
   }
 
-  let pagamento = await Pagamento.findOne({ where: { id_pedido: dados.idPedido } });
+  let pagamento = await pagamentoRepository.buscarPorPedido(dados.idPedido);
   if (pagamento?.status === 'APROVADO') throw new ErroHttp(409, 'Este pedido já foi pago');
   // Já existe um link de pagamento em aberto: devolve o mesmo, em vez de criar outro e arriscar pagar duas vezes.
   if (pagamento?.status === 'PENDENTE' && pagamento.url_pagamento) return paraResposta(pagamento);
@@ -99,7 +92,7 @@ export async function registrarPagamento(usuario: TokenPayload, dados: Registrar
 
   try {
     if (!pagamento) {
-      pagamento = await Pagamento.create({
+      pagamento = await pagamentoRepository.criar({
         id_pedido: dados.idPedido,
         id_usuario: usuario.id_usuario,
         metodo_pagamento: dados.metodoPagamento,
@@ -107,7 +100,7 @@ export async function registrarPagamento(usuario: TokenPayload, dados: Registrar
         status: 'PENDENTE',
       });
     } else {
-      await pagamento.update({
+      await pagamentoRepository.atualizar(pagamento, {
         metodo_pagamento: dados.metodoPagamento,
         valor: dados.valor,
         status: 'PENDENTE',
@@ -116,7 +109,7 @@ export async function registrarPagamento(usuario: TokenPayload, dados: Registrar
       });
     }
   } catch (err) {
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, 'Já existe um pagamento em andamento para este pedido');
     }
     throw err;
@@ -135,14 +128,14 @@ export async function registrarPagamento(usuario: TokenPayload, dados: Registrar
       precoUnitario: Number(i.preco_unitario),
     })),
   });
-  await pagamento.update({ id_externo: cobranca.idExterno, url_pagamento: cobranca.urlPagamento });
+  await pagamentoRepository.atualizar(pagamento, { id_externo: cobranca.idExterno, url_pagamento: cobranca.urlPagamento });
 
   if (cobranca.aprovadoNaHora) await confirmar(pagamento);
   return paraResposta(pagamento);
 }
 
 export async function buscarPagamento(usuario: TokenPayload, idPedido: number) {
-  const pagamento = await Pagamento.findOne({ where: { id_pedido: idPedido } });
+  const pagamento = await pagamentoRepository.buscarPorPedido(idPedido);
   if (!pagamento) throw new ErroHttp(404, 'Nenhum pagamento para esse pedido');
 
   const dono = pagamento.id_usuario === usuario.id_usuario;
@@ -161,11 +154,8 @@ const FALHAS_DO_GATEWAY = ['rejected', 'cancelled'];
 
 // Nunca sobrescreve um pagamento já APROVADO (a troca é condicional).
 async function marcarParaReembolso(pagamento: Pagamento, idGateway: string | null) {
-  const [alterados] = await Pagamento.update(
-    { status: 'REEMBOLSAR', id_pagamento_gateway: idGateway },
-    { where: { id_pagamento: pagamento.id_pagamento, status: { [Op.ne]: 'APROVADO' } } }
-  );
-  if (alterados > 0) {
+  const alterado = await pagamentoRepository.marcarParaReembolso(pagamento.id_pagamento, idGateway);
+  if (alterado) {
     pagamento.status = 'REEMBOLSAR';
     registrarEvento('pagamento_a_reembolsar');
   }
@@ -199,7 +189,7 @@ async function aplicarResultado(pagamento: Pagamento, info: PagamentoExterno) {
   }
 
   if (FALHAS_DO_GATEWAY.includes(info.status) && pagamento.status === 'PENDENTE') {
-    await pagamento.update({ status: 'RECUSADO' });
+    await pagamentoRepository.atualizar(pagamento, { status: 'RECUSADO' });
     registrarEvento('pagamento_recusado');
   }
 }
@@ -212,7 +202,7 @@ export async function processarNotificacao(idPagamentoExterno: string) {
   const idPedido = Number(info.externalReference);
   if (!Number.isInteger(idPedido)) return ignorar('referência externa inválida', { idPagamentoExterno });
 
-  const pagamento = await Pagamento.findOne({ where: { id_pedido: idPedido } });
+  const pagamento = await pagamentoRepository.buscarPorPedido(idPedido);
   if (!pagamento) return ignorar('pedido sem pagamento registrado', { idPedido });
 
   await aplicarResultado(pagamento, info);
@@ -221,7 +211,7 @@ export async function processarNotificacao(idPagamentoExterno: string) {
 // Plano B do webhook (perdido, atrasado ou sem URL pública, como em ambiente local): o dono do pedido (ou quem
 // tem pedidos:listar-todos) pede para consultar o gateway agora. Usa a mesma regra de decisão do webhook.
 export async function sincronizarPagamento(usuario: TokenPayload, idPedido: number) {
-  const pagamento = await Pagamento.findOne({ where: { id_pedido: idPedido } });
+  const pagamento = await pagamentoRepository.buscarPorPedido(idPedido);
   if (!pagamento) throw new ErroHttp(404, 'Nenhum pagamento para esse pedido');
 
   const dono = pagamento.id_usuario === usuario.id_usuario;

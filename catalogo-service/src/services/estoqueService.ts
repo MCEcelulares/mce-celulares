@@ -1,6 +1,8 @@
-import { Op, UniqueConstraintError, literal } from 'sequelize';
-import { Produto, ReservaEstoque } from '../models';
-import { sequelize } from '../config/database';
+import type { ReservaEstoque } from '../models';
+import * as produtoRepository from '../repositories/produtoRepository';
+import * as reservaEstoqueRepository from '../repositories/reservaEstoqueRepository';
+import { RegistroDuplicadoError } from '../repositories/erros';
+import { comTransacao } from '../repositories/transacao';
 import { ErroHttp } from '../middlewares/errorHandler';
 import { logger } from '../utils/logger';
 import { registrarEvento } from '../utils/metricas';
@@ -31,18 +33,16 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
   const itens = [...dados.itens].sort((a, b) => a.id_produto - b.id_produto); // ordem fixa evita deadlock
 
   try {
-    const resultado = await sequelize.transaction(async (transaction) => {
+    const resultado = await comTransacao(async (transacao) => {
       // 1) Trava as linhas dos produtos em ordem fixa: serializa reservas concorrentes dos mesmos itens
       //    sem deadlock e sem gap lock (travar "reservas que ainda não existem" causa deadlock no InnoDB).
-      const produtos = await Produto.findAll({
-        where: { id_produto: itens.map((i) => i.id_produto) },
-        order: [['id_produto', 'ASC']],
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
+      const produtos = await produtoRepository.travarPorIds(
+        itens.map((i) => i.id_produto),
+        transacao
+      );
 
       // 2) Só depois lê as reservas do pedido: já enxerga o que a transação concorrente acabou de gravar.
-      const existentes = await ReservaEstoque.findAll({ where: { id_pedido: idPedido }, transaction });
+      const existentes = await reservaEstoqueRepository.buscarPorPedido(idPedido, transacao);
       if (existentes.length > 0) {
         if (existentes.some((r) => r.status !== statusReserva.ativa)) {
           throw new ErroHttp(409, 'A reserva deste pedido já foi devolvida');
@@ -68,12 +68,9 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
       const faltas: { id_produto: number; solicitado: number; disponivel: number }[] = [];
       for (const item of itens) {
         // Baixa atômica e condicional: só desconta se ainda houver estoque (sem ler-e-depois-escrever).
-        const [alterados] = await Produto.update(
-          { estoque: literal(`estoque - ${item.quantidade}`) },
-          { where: { id_produto: item.id_produto, ativo: true, estoque: { [Op.gte]: item.quantidade } }, transaction }
-        );
-        if (alterados === 0) {
-          const atual = await Produto.findByPk(item.id_produto, { transaction });
+        const baixou = await produtoRepository.baixarSeHouver(item.id_produto, item.quantidade, transacao);
+        if (!baixou) {
+          const atual = await produtoRepository.buscarPorId(item.id_produto, transacao);
           faltas.push({ id_produto: item.id_produto, solicitado: item.quantidade, disponivel: atual?.estoque ?? 0 });
         }
       }
@@ -81,10 +78,7 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
         throw new ErroHttp(409, 'Estoque insuficiente', faltas);
       }
 
-      const reservas = await ReservaEstoque.bulkCreate(
-        itens.map((i) => ({ id_pedido: idPedido, id_produto: i.id_produto, quantidade: i.quantidade })),
-        { transaction }
-      );
+      const reservas = await reservaEstoqueRepository.criarDoPedido(idPedido, itens, transacao);
       return { criada: true, reservas };
     });
 
@@ -100,7 +94,7 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
     if (err instanceof ErroHttp && err.message === 'Estoque insuficiente') {
       registrarEvento('reserva_estoque_insuficiente');
     }
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, 'Já existe uma reserva em andamento para este pedido');
     }
     throw err;
@@ -109,32 +103,23 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
 
 // Devolve ao estoque os itens da reserva (pedido cancelado). Idempotente: devolver duas vezes não soma duas vezes.
 export async function devolverReserva(idPedido: number) {
-  const resultado = await sequelize.transaction(async (transaction) => {
-    const previas = await ReservaEstoque.findAll({ where: { id_pedido: idPedido }, transaction });
+  const resultado = await comTransacao(async (transacao) => {
+    const previas = await reservaEstoqueRepository.buscarPorPedido(idPedido, transacao);
     if (previas.length === 0) {
       throw new ErroHttp(404, 'Não há reserva de estoque para este pedido');
     }
 
     // Mesma ordem de travas da reserva (produtos primeiro, depois as reservas) para não gerar deadlock.
-    await Produto.findAll({
-      where: { id_produto: previas.map((r) => r.id_produto) },
-      order: [['id_produto', 'ASC']],
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-    const reservas = await ReservaEstoque.findAll({
-      where: { id_pedido: idPedido },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+    await produtoRepository.travarPorIds(
+      previas.map((r) => r.id_produto),
+      transacao
+    );
+    const reservas = await reservaEstoqueRepository.buscarPorPedidoTravando(idPedido, transacao);
 
     const ativas = reservas.filter((r) => r.status === statusReserva.ativa);
     for (const reserva of ativas) {
-      await Produto.update(
-        { estoque: literal(`estoque + ${reserva.quantidade}`) },
-        { where: { id_produto: reserva.id_produto }, transaction }
-      );
-      await reserva.update({ status: statusReserva.devolvida, atualizado_em: new Date() }, { transaction });
+      await produtoRepository.devolverQuantidade(reserva.id_produto, reserva.quantidade, transacao);
+      await reservaEstoqueRepository.marcarDevolvida(reserva, transacao);
     }
     return { devolvidos: ativas.length, reservas };
   });
@@ -148,7 +133,7 @@ export async function devolverReserva(idPedido: number) {
 }
 
 export async function buscarReserva(idPedido: number) {
-  const reservas = await ReservaEstoque.findAll({ where: { id_pedido: idPedido } });
+  const reservas = await reservaEstoqueRepository.buscarPorPedido(idPedido);
   if (reservas.length === 0) {
     throw new ErroHttp(404, 'Não há reserva de estoque para este pedido');
   }
