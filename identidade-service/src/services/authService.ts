@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
-import { Usuario, Cargo } from '../models';
+import type { Usuario } from '../models';
+import * as usuarioRepository from '../repositories/usuarioRepository';
+import * as cargoRepository from '../repositories/cargoRepository';
 import { ErroHttp } from '../middlewares/errorHandler';
 import { assinarToken } from '../utils/jwt';
 import { logger } from '../utils/logger';
@@ -47,7 +49,7 @@ async function iniciarSessao(usuario: Usuario) {
 }
 
 export async function login(dados: LoginInput) {
-  const usuario = await Usuario.findOne({ where: { email: dados.email } });
+  const usuario = await usuarioRepository.buscarPorEmail(dados.email);
   if (!usuario || !usuario.senha) {
     registrarEvento('login_falha');
     logger.warn({ motivo: 'usuário inexistente ou sem senha local' }, 'login falhou');
@@ -83,23 +85,23 @@ export async function loginGoogle(idToken: string) {
     throw new ErroHttp(401, 'Token do Google inválido ou e-mail não verificado');
   }
 
-  let usuario = await Usuario.findOne({ where: { googleId: payload.sub } });
+  let usuario = await usuarioRepository.buscarPorGoogleId(payload.sub);
 
   if (!usuario) {
-    usuario = await Usuario.findOne({ where: { email: payload.email } });
+    usuario = await usuarioRepository.buscarPorEmail(payload.email);
     if (usuario) {
-      await usuario.update({ googleId: payload.sub, email_verificado: true });
+      await usuarioRepository.atualizar(usuario, { googleId: payload.sub, email_verificado: true });
       logger.info({ id_usuario: usuario.id_usuario }, 'conta Google vinculada a conta existente');
     } else {
-      usuario = await Usuario.create({
+      usuario = await usuarioRepository.criar({
         nome: payload.name ?? payload.email,
         email: payload.email,
         provedor: 'google',
         googleId: payload.sub,
         email_verificado: true,
       });
-      const cargo = await Cargo.findOne({ where: { nome: nomeCargoPadrao } });
-      if (cargo) await usuario.addCargo(cargo);
+      const cargo = await cargoRepository.buscarPorNome(nomeCargoPadrao);
+      if (cargo) await usuarioRepository.adicionarCargo(usuario, cargo);
       registrarEvento('cadastro_google');
       logger.info({ id_usuario: usuario.id_usuario }, 'usuário criado via Google');
     }
@@ -119,7 +121,7 @@ export async function renovarSessao(refreshToken: string) {
     throw new ErroHttp(401, 'Refresh token inválido ou expirado');
   }
 
-  const usuario = await Usuario.findByPk(idUsuario);
+  const usuario = await usuarioRepository.buscarPorId(idUsuario);
   if (!usuario || !usuario.ativo) {
     await revogarTodasAsSessoesSemFalhar(idUsuario);
     registrarEvento('refresh_falha');

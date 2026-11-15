@@ -1,14 +1,12 @@
-import { UniqueConstraintError } from 'sequelize';
-import { Cargo, Permissao, UsuarioCargo, CargoPermissao } from '../models';
-import { sequelize } from '../config/database';
+import type { Cargo } from '../models';
+import * as cargoRepository from '../repositories/cargoRepository';
+import * as permissaoRepository from '../repositories/permissaoRepository';
+import { RegistroDuplicadoError } from '../repositories/erros';
+import { comTransacao } from '../repositories/transacao';
 import { ErroHttp } from '../middlewares/errorHandler';
 import { logger } from '../utils/logger';
 import { cargosProtegidos, nomeCargoAdmin } from '../config/rbac';
 import { CriarCargoInput } from '../validators/cargoValidators';
-
-const incluirPermissoes = [
-  { model: Permissao, as: 'permissoes', attributes: ['nome'], through: { attributes: [] } },
-];
 
 function paraResposta(cargo: Cargo) {
   return {
@@ -20,7 +18,7 @@ function paraResposta(cargo: Cargo) {
 }
 
 async function obterCargoOuFalhar(id: number) {
-  const cargo = await Cargo.findByPk(id, { include: incluirPermissoes });
+  const cargo = await cargoRepository.buscarPorIdComPermissoes(id);
   if (!cargo) {
     throw new ErroHttp(404, 'Cargo não existe');
   }
@@ -35,7 +33,7 @@ function exigirNaoProtegido(cargo: Cargo, acao: string) {
 
 async function buscarPermissoesPorNome(nomes: string[]) {
   const unicos = [...new Set(nomes)];
-  const permissoes = await Permissao.findAll({ where: { nome: unicos } });
+  const permissoes = await permissaoRepository.buscarPorNomes(unicos);
   const inexistentes = unicos.filter((n) => !permissoes.some((p) => p.nome === n));
   if (inexistentes.length > 0) {
     throw new ErroHttp(400, `Permissão(ões) inexistente(s): ${inexistentes.join(', ')}`);
@@ -44,7 +42,7 @@ async function buscarPermissoesPorNome(nomes: string[]) {
 }
 
 export async function listarCargos() {
-  const cargos = await Cargo.findAll({ include: incluirPermissoes, order: [['id_cargo', 'ASC']] });
+  const cargos = await cargoRepository.listarComPermissoes();
   return cargos.map(paraResposta);
 }
 
@@ -57,19 +55,20 @@ export async function criarCargo(dados: CriarCargoInput, criadoPor: number) {
 
   let id: number;
   try {
-    const cargo = await sequelize.transaction(async (transaction) => {
-      const novo = await Cargo.create({ nome: dados.nome }, { transaction });
+    const cargo = await comTransacao(async (transacao) => {
+      const novo = await cargoRepository.criar(dados.nome, transacao);
       if (permissoes.length > 0) {
-        await CargoPermissao.bulkCreate(
-          permissoes.map((p) => ({ id_cargo: novo.id_cargo, id_permissao: p.id_permissao })),
-          { transaction }
+        await cargoRepository.vincularPermissoes(
+          novo.id_cargo,
+          permissoes.map((p) => p.id_permissao),
+          transacao
         );
       }
       return novo;
     });
     id = cargo.id_cargo;
   } catch (err) {
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, 'Já existe um cargo com esse nome');
     }
     throw err;
@@ -84,9 +83,9 @@ export async function renomearCargo(id: number, nome: string, alteradoPor: numbe
   exigirNaoProtegido(cargo, 'ser renomeado');
 
   try {
-    await cargo.update({ nome });
+    await cargoRepository.renomear(cargo, nome);
   } catch (err) {
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, 'Já existe um cargo com esse nome');
     }
     throw err;
@@ -99,14 +98,14 @@ export async function excluirCargo(id: number, excluidoPor: number) {
   const cargo = await obterCargoOuFalhar(id);
   exigirNaoProtegido(cargo, 'ser excluído');
 
-  const emUso = await UsuarioCargo.count({ where: { id_cargo: id } });
+  const emUso = await cargoRepository.contarUsuarios(id);
   if (emUso > 0) {
     throw new ErroHttp(409, `O cargo está atribuído a ${emUso} usuário(s). Remova-o deles antes de excluir`);
   }
 
-  await sequelize.transaction(async (transaction) => {
-    await CargoPermissao.destroy({ where: { id_cargo: id }, transaction });
-    await cargo.destroy({ transaction });
+  await comTransacao(async (transacao) => {
+    await cargoRepository.removerVinculosDoCargo(id, transacao);
+    await cargoRepository.excluir(cargo, transacao);
   });
   logger.info({ id_cargo: id, nome: cargo.nome, excluidoPor }, 'cargo excluído');
 }
@@ -119,12 +118,13 @@ export async function definirPermissoesDoCargo(id: number, nomes: string[], alte
   }
 
   const permissoes = await buscarPermissoesPorNome(nomes);
-  await sequelize.transaction(async (transaction) => {
-    await CargoPermissao.destroy({ where: { id_cargo: id }, transaction });
+  await comTransacao(async (transacao) => {
+    await cargoRepository.removerVinculosDoCargo(id, transacao);
     if (permissoes.length > 0) {
-      await CargoPermissao.bulkCreate(
-        permissoes.map((p) => ({ id_cargo: id, id_permissao: p.id_permissao })),
-        { transaction }
+      await cargoRepository.vincularPermissoes(
+        id,
+        permissoes.map((p) => p.id_permissao),
+        transacao
       );
     }
   });

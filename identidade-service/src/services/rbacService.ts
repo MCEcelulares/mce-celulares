@@ -1,4 +1,4 @@
-import { Usuario, Cargo, Permissao } from '../models';
+import * as usuarioRepository from '../repositories/usuarioRepository';
 
 export interface AcessoUsuario {
   cargos: string[];
@@ -6,16 +6,7 @@ export interface AcessoUsuario {
 }
 
 export async function obterAcesso(idUsuario: number): Promise<AcessoUsuario> {
-  const usuario = await Usuario.findByPk(idUsuario, {
-    include: [
-      {
-        model: Cargo,
-        as: 'cargos',
-        through: { attributes: [] },
-        include: [{ model: Permissao, as: 'permissoes', through: { attributes: [] } }],
-      },
-    ],
-  });
+  const usuario = await usuarioRepository.buscarComCargosEPermissoes(idUsuario);
 
   const cargos = usuario?.cargos ?? [];
   const permissoes = new Set<string>();

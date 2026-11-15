@@ -1,10 +1,8 @@
-import { Order, UniqueConstraintError } from 'sequelize';
-import { Carrinho, ItemCarrinho } from '../models';
+import type { Carrinho } from '../models';
+import * as carrinhoRepository from '../repositories/carrinhoRepository';
+import { RegistroDuplicadoError } from '../repositories/erros';
 import { ErroHttp } from '../middlewares/errorHandler';
 import * as catalogo from '../clients/catalogoClient';
-
-const incluirItens = [{ model: ItemCarrinho, as: 'itens' }];
-const ordemItens: Order = [[{ model: ItemCarrinho, as: 'itens' }, 'id_item_carrinho', 'ASC']];
 
 // Valores em centavos para somar sem erro de ponto flutuante.
 export const centavos = (valor: number | string) => Math.round(Number(valor) * 100);
@@ -24,14 +22,10 @@ export function paraResposta(carrinho: Carrinho) {
   return { id_carrinho: carrinho.id_carrinho, itens, total };
 }
 
-export function carregarCarrinhoAtivo(idUsuario: number) {
-  return Carrinho.findOne({ where: { id_usuario: idUsuario, ativo: true }, include: incluirItens, order: ordemItens });
-}
-
 async function obterOuCriarCarrinho(idUsuario: number) {
-  const existente = await carregarCarrinhoAtivo(idUsuario);
+  const existente = await carrinhoRepository.buscarAtivoComItens(idUsuario);
   if (existente) return existente;
-  const novo = await Carrinho.create({ id_usuario: idUsuario });
+  const novo = await carrinhoRepository.criar(idUsuario);
   novo.itens = [];
   return novo;
 }
@@ -57,9 +51,9 @@ export async function adicionarItem(idUsuario: number, idProduto: number, quanti
 
   try {
     if (existente) {
-      await existente.update({ quantidade: novaQuantidade, preco_unitario: produto.preco });
+      await carrinhoRepository.atualizarItem(existente, { quantidade: novaQuantidade, preco_unitario: produto.preco });
     } else {
-      await ItemCarrinho.create({
+      await carrinhoRepository.criarItem({
         id_carrinho: carrinho.id_carrinho,
         id_produto: idProduto,
         preco_unitario: produto.preco,
@@ -67,7 +61,7 @@ export async function adicionarItem(idUsuario: number, idProduto: number, quanti
       });
     }
   } catch (err) {
-    if (err instanceof UniqueConstraintError) {
+    if (err instanceof RegistroDuplicadoError) {
       throw new ErroHttp(409, 'Este produto já está sendo adicionado ao carrinho, tente novamente');
     }
     throw err;
@@ -89,11 +83,11 @@ export async function atualizarItem(idUsuario: number, idItem: number, quantidad
   if (!produto) throw new ErroHttp(409, 'Este produto não está mais disponível');
   garantirEstoque(produto, quantidade);
 
-  await item.update({ quantidade, preco_unitario: produto.preco });
+  await carrinhoRepository.atualizarItem(item, { quantidade, preco_unitario: produto.preco });
   return buscarCarrinho(idUsuario);
 }
 
 export async function removerItem(idUsuario: number, idItem: number) {
   const item = await obterItemDoCarrinho(idUsuario, idItem);
-  await item.destroy();
+  await carrinhoRepository.removerItem(item);
 }

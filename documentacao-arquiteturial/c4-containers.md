@@ -75,3 +75,4 @@ graph TD
 - **Painel administrativo:** cada serviço expõe as próprias métricas (`dashboard:ver`): ADR-012.
 - **Imagens de produto:** enviadas ao Catálogo, gravadas num volume e servidas por `/catalogo/imagens/`: ADR-013.
 - **Cache-aside `user:{id}` no Vendas:** previsto na primeira versão deste diagrama e **descartado** (motivo no ADR-003, seção "Atualização"). A sessão renovável do Identidade (ADR-007) é o outro uso do Redis como armazenamento.
+- **Camadas internas de cada serviço** (routes, controllers, services, repositories e models): [arquitetura-em-camadas.md](arquitetura-em-camadas.md) (C4 nível 3) e ADR-015.

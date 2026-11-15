@@ -1,5 +1,6 @@
-import { Op, UniqueConstraintError } from 'sequelize';
-import { NotificacaoLog } from '../models';
+import type { NotificacaoLog } from '../models';
+import * as notificacaoLogRepository from '../repositories/notificacaoLogRepository';
+import { RegistroDuplicadoError } from '../repositories/erros';
 import { enviarEmail } from './emailService';
 import { ErroHttp } from '../middlewares/errorHandler';
 import { PedidoCriado, PagamentoConfirmado } from '../validators/eventoValidators';
@@ -46,12 +47,26 @@ function pendentePresa(log: NotificacaoLog, agora: Date = new Date()): boolean {
 
 async function registrarTentativa({ idPedido, tipo, destinatario, assunto, texto }: Envio) {
   try {
-    return await NotificacaoLog.create({ id_pedido: idPedido, tipo, destinatario, assunto, texto, status: 'PENDENTE' });
+    return await notificacaoLogRepository.criar({
+      id_pedido: idPedido,
+      tipo,
+      destinatario,
+      assunto,
+      texto,
+      status: 'PENDENTE',
+    });
   } catch (err) {
-    if (!(err instanceof UniqueConstraintError)) throw err;
-    const existente = await NotificacaoLog.findOne({ where: { id_pedido: idPedido, tipo } });
+    if (!(err instanceof RegistroDuplicadoError)) throw err;
+    const existente = await notificacaoLogRepository.buscarPorPedidoETipo(idPedido, tipo);
     if (existente && (existente.status === 'FALHA' || pendentePresa(existente))) {
-      await existente.update({ status: 'PENDENTE', erro: null, destinatario, assunto, texto, criado_em: new Date() });
+      await notificacaoLogRepository.atualizar(existente, {
+        status: 'PENDENTE',
+        erro: null,
+        destinatario,
+        assunto,
+        texto,
+        criado_em: new Date(),
+      });
       return existente;
     }
     return null;
@@ -66,12 +81,12 @@ async function executarEnvio(
   const rodadas = (log.tentativas ?? 0) + 1;
   try {
     await enviarComTentativas({ para: destinatario, assunto, texto });
-    await log.update({ status: 'ENVIADO', enviado_em: new Date(), tentativas: rodadas });
+    await notificacaoLogRepository.atualizar(log, { status: 'ENVIADO', enviado_em: new Date(), tentativas: rodadas });
     registrarEvento('email_enviado');
     if (ocorridoEm) registrarEntrega(tipo, ocorridoEm);
   } catch (err) {
     const motivo = err instanceof Error ? err.message : String(err);
-    await log.update({ status: 'FALHA', erro: motivo.slice(0, 255), tentativas: rodadas });
+    await notificacaoLogRepository.atualizar(log, { status: 'FALHA', erro: motivo.slice(0, 255), tentativas: rodadas });
     registrarEvento('email_falha');
     logger.error({ err, idPedido, tipo, rodadas }, 'falha ao enviar e-mail');
   }
@@ -97,16 +112,7 @@ export function esperaEmMinutos(rodadas: number): number {
 
 // Reenvia as notificações que falharam, uma de cada vez. Devolve quantas foram reenviadas (com sucesso ou não).
 export async function reenviarNotificacoes(agora: Date = new Date()): Promise<number> {
-  const candidatas = await NotificacaoLog.findAll({
-    where: {
-      status: { [Op.in]: ['FALHA', 'PENDENTE'] },
-      tentativas: { [Op.lt]: maximoDeRodadas() },
-      assunto: { [Op.ne]: null },
-      texto: { [Op.ne]: null },
-    },
-    order: [['criado_em', 'ASC']],
-    limit: 20,
-  });
+  const candidatas = await notificacaoLogRepository.buscarReenviaveis({ maximoDeRodadas: maximoDeRodadas(), limite: 20 });
 
   let reenviadas = 0;
   for (const log of candidatas) {
@@ -116,12 +122,8 @@ export async function reenviarNotificacoes(agora: Date = new Date()): Promise<nu
         : agora.getTime() - new Date(log.criado_em).getTime() >= esperaEmMinutos(log.tentativas) * 60_000;
     if (!pronta) continue;
 
-    // Reivindica com UPDATE condicional: com várias instâncias, só uma envia.
-    const [reivindicadas] = await NotificacaoLog.update(
-      { status: 'PENDENTE', erro: null, criado_em: agora },
-      { where: { id_notificacao: log.id_notificacao, status: log.status, criado_em: log.criado_em } }
-    );
-    if (reivindicadas === 0) continue;
+    // Com várias instâncias, só uma consegue reivindicar o reenvio.
+    if (!(await notificacaoLogRepository.reivindicarReenvio(log, agora))) continue;
 
     await executarEnvio(log, {
       idPedido: log.id_pedido,
@@ -172,11 +174,7 @@ export async function processarPagamentoConfirmado(dados: PagamentoConfirmado, o
 }
 
 export async function listarPorPedido(idPedido: number) {
-  const logs = await NotificacaoLog.findAll({
-    where: { id_pedido: idPedido },
-    attributes: { exclude: ['texto'] },
-    order: [['id_notificacao', 'ASC']],
-  });
+  const logs = await notificacaoLogRepository.listarPorPedido(idPedido);
   if (logs.length === 0) {
     throw new ErroHttp(404, 'Nenhuma notificação para esse pedido');
   }

@@ -65,6 +65,13 @@ jobs:
       - run: pip install pyyaml
       - run: python3 scripts/verificar-contratos.py
 
+  # Arquitetura em camadas (ADR-015): só os repositories falam com o banco.
+  camadas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/verificar-camadas.py
+
   # O gateway precisa ter configuração válida (e o /interno do Catálogo bloqueado).
   gateway:
     runs-on: ubuntu-latest

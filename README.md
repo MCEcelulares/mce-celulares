@@ -67,7 +67,10 @@ cd catalogo-service && npm ci && npx tsc --noEmit && npx jest --runInBand
 # ponta a ponta, contra o ambiente que está no ar
 node e2e/executar.js
 ```
-Veja [e2e/README.md](e2e/README.md) e o [CI](.github/workflows/ci.yml), que roda tipagem, testes (os 5 serviços), validação dos contratos contra as rotas, `nginx -t` e o build das imagens.
+Veja [e2e/README.md](e2e/README.md) e o [CI](.github/workflows/ci.yml), que roda tipagem, testes (os 5 serviços), validação dos contratos contra as rotas, regra de camadas (`python3 scripts/verificar-camadas.py`), `nginx -t` e o build das imagens.
+
+## Arquitetura em camadas
+Cada serviço segue `routes → controllers → services → repositories → models`; só os repositories falam com o Sequelize (ADR-015). Mapa completo: [arquitetura-em-camadas.md](documentacao-arquiteturial/arquitetura-em-camadas.md). Ao criar uma entidade nova, crie o repository dela e rode `python3 scripts/verificar-camadas.py`.
 
 ## Documentação da API
 Com o ambiente no ar, o Swagger UI com os contratos dos 5 serviços fica em `http://localhost:8080/docs/` (seletor no topo; carrega a interface de um CDN, então precisa de internet). Os contratos ficam em `apis/` e o CI falha se uma rota do código estiver sem documentação (`python3 scripts/verificar-contratos.py`).
@@ -97,12 +100,12 @@ O pagamento real usa o Checkout Pro. O roteiro de teste (contas, cartões, webho
 ## Mapa do repositório
 - `identidade-service/`, `catalogo-service/`, `vendas-service/`, `pagamento-service/`, `notificacao-service/` — os serviços
 - `apis/` — contrato OpenAPI de cada serviço
-- `documentacao-arquiteturial/` — C4 (contexto e containers), diagramas e os ADRs (decisões 001 a 014)
+- `documentacao-arquiteturial/` — C4 (contexto, containers e [camadas de um serviço](documentacao-arquiteturial/arquitetura-em-camadas.md)), diagramas e os ADRs (decisões 001 a 015)
 - `ddd/` — Context Map e Bounded Contexts
 - `requisitos/` — requisitos funcionais e não funcionais
 - `qualidade-observabilidade/` — cenários de qualidade e SLOs
 - `operacao/` — runbook de incidentes
-- `scripts/` — deploy, rollback e verificação dos contratos
+- `scripts/` — deploy, rollback e verificação dos contratos e das camadas
 - `tech-forge/` — Cynefin e ciclo de vida
 - `infra/nginx/` — configuração do gateway · `infra/swagger/` — página do Swagger UI
 - `keys/` — gerador do par de chaves JWT
