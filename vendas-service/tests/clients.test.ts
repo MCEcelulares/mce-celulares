@@ -4,6 +4,7 @@ jest.unmock('../src/clients/identidadeClient');
 import * as catalogo from '../src/clients/catalogoClient';
 import * as identidade from '../src/clients/identidadeClient';
 import { ErroHttp } from '../src/middlewares/errorHandler';
+import { contextoRequisicao } from '../src/utils/contexto';
 
 const resposta = (status: number, corpo?: unknown) =>
   ({
@@ -201,5 +202,25 @@ describe('Identidade', () => {
 
     fetchMock.mockResolvedValue(resposta(418, {}));
     await rejeitaCom(identidade.buscarUsuario(5, token), 502);
+  });
+});
+
+describe('Propagação do id de correlação', () => {
+  const produto = { id_produto: 10, nome: 'iPhone', preco: 100, estoque: 3, ativo: true };
+
+  it('repassa o x-correlation-id da requisição em andamento ao Catálogo e à Identidade', async () => {
+    fetchMock.mockResolvedValue(resposta(200, produto));
+    await contextoRequisicao.run({ idCorrelacao: 'corr-123' }, async () => {
+      await catalogo.buscarProduto(10);
+      await identidade.buscarUsuario(5, 'Bearer jwt');
+    });
+    expect(fetchMock.mock.calls[0][1].headers['x-correlation-id']).toBe('corr-123');
+    expect(fetchMock.mock.calls[1][1].headers['x-correlation-id']).toBe('corr-123');
+  });
+
+  it('fora de uma requisição não envia o cabeçalho', async () => {
+    fetchMock.mockResolvedValue(resposta(200, produto));
+    await catalogo.buscarProduto(10);
+    expect(fetchMock.mock.calls[0][1].headers['x-correlation-id']).toBeUndefined();
   });
 });

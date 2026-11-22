@@ -47,15 +47,24 @@ jobs:
           DB_NAME: ${{ matrix.servico == 'catalogo-service' && 'catalogo_db' || 'identidade_db' }}
         run: |
           node -e "const mysql = require('mysql2/promise'); mysql.createConnection({host: '127.0.0.1', user: 'root', password: 'root'}).then(async c => { await c.query('CREATE DATABASE IF NOT EXISTS ${{ matrix.servico == 'identidade-service' && 'identidade_db' || 'catalogo_db' }}'); await c.end(); })"
-          echo "DB_HOST=$DB_HOST" >> "$GITHUB_ENV"
-          echo "DB_PORT=$DB_PORT" >> "$GITHUB_ENV"
-          echo "DB_PASSWORD=$DB_PASSWORD" >> "$GITHUB_ENV"
-          echo "DB_NAME=$DB_NAME" >> "$GITHUB_ENV"
+          {
+            echo "DB_HOST=$DB_HOST"
+            echo "DB_PORT=$DB_PORT"
+            echo "DB_PASSWORD=$DB_PASSWORD"
+            echo "DB_NAME=$DB_NAME"
+          } >> "$GITHUB_ENV"
           npx sequelize-cli db:migrate
       - name: Seed (cargos e permissões que os testes do Identidade exigem)
         if: matrix.servico == 'identidade-service'
         run: npx sequelize-cli db:seed:all
       - run: npx jest --runInBand
+
+  # Os workflows precisam ser válidos (o actionlint também confere os scripts shell embutidos).
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:latest -color
 
   # Os contratos precisam ser YAML válido e bater com as rotas do código (nenhuma rota sem documentação).
   contratos:
@@ -78,9 +87,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: nginx -t
-        run: docker run --rm -v "$PWD/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:alpine nginx -t
-      - name: /catalogo/interno/ bloqueado no nginx.conf
-        run: grep -qF 'location ~ ^/catalogo/interno(/|$) {' infra/nginx/nginx.conf
+        run: |
+          docker run --rm \
+            -v "$PWD/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/infra/nginx/proxy-headers.conf:/etc/nginx/proxy-headers.conf:ro" \
+            nginx:alpine nginx -t
+      - name: /catalogo/interno/ bloqueado no nginx.conf (sem diferenciar maiúsculas)
+        run: grep -qF 'location ~* ^/catalogo/interno(/|$) {' infra/nginx/nginx.conf
+      - name: compose válido (com e sem o profile dev)
+        run: |
+          # os .env não vão para o git; arquivos vazios bastam para validar a sintaxe
+          for s in identidade catalogo vendas pagamento notificacao; do touch "$s-service/.env"; done
+          docker compose config -q
+          docker compose --profile dev config -q
 
   # Garante que a imagem de cada serviço compila no Linux (pega package-lock fora de sincronia com o `npm ci` do Docker).
   imagens:

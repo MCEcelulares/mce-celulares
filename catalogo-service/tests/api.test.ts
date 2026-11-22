@@ -556,6 +556,13 @@ describe('observabilidade (RNF11)', () => {
     expect(pronto.body).toMatchObject({ banco: 'ok', servico: 'catalogo-service' });
   });
 
+  it('contabiliza o erro de negócio na rota certa (/produtos/:id), para os SLIs enxergarem as falhas', async () => {
+    expect((await api.get('/produtos/999999999')).status).toBe(404);
+    const r = await api.get('/metrics').set({ Authorization: 'Bearer token-de-teste' });
+    expect(r.text).toContain('metodo="GET",rota="/produtos/:id",status="404"');
+    expect(r.text).not.toContain('rota="/:id",status="404"');
+  });
+
   it('/metrics exige token e expõe métricas de negócio e de cache', async () => {
     expect((await api.get('/metrics')).status).toBe(401);
     const r = await api.get('/metrics').set({ Authorization: 'Bearer token-de-teste' });

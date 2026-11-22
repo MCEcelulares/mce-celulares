@@ -39,14 +39,16 @@ Não rode de novo depois: um par novo invalida o anterior. Os `.pem` ficam em `k
 | `SERVICE_TOKEN` | catálogo e vendas | Um segredo aleatório novo em cada um (ex.: `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`) |
 | `CATALOGO_SERVICE_TOKEN` | vendas | **O mesmo valor** do `SERVICE_TOKEN` do catálogo |
 | `VENDAS_SERVICE_TOKEN` | pagamento | **O mesmo valor** do `SERVICE_TOKEN` do vendas |
-| `SMTP_*`, `EMAIL_CONTATO_LOJA`, `EMAIL_REMETENTE` | notificação | Seu provedor de e-mail (em desenvolvimento, uma caixa de teste como o Mailtrap) |
+| `METRICS_TOKEN` | todos os 5 | Um valor aleatório, o mesmo nos cinco (use o comando acima). Libera `GET /<serviço>/metrics` com `Authorization: Bearer <valor>`; vazio desliga o endpoint (404). Necessário para medir os SLOs (`node scripts/medir-slos.js`) |
+| `SMTP_*`, `EMAIL_CONTATO_LOJA`, `EMAIL_REMETENTE` | notificação | Seu provedor de e-mail. Em desenvolvimento, use o Mailpit do compose: `SMTP_HOST=mailpit`, `SMTP_PORT=1025` (veja o passo 4) |
 | `GATEWAY_PAGAMENTO` | pagamento | `simulado` para desenvolver sem Mercado Pago; `mercadopago` para valer |
 
 Os `.env` **não vão para o git**. Detalhes de cada variável estão comentados nos `.env.example`.
 
 **4. Subir.**
 ```bash
-docker compose up -d --build
+docker compose up -d --build                 # servidor ou ambiente sem e-mail de teste
+docker compose --profile dev up -d --build   # desenvolvimento: também sobe o Mailpit (caixa de e-mails em http://127.0.0.1:8025)
 ```
 Os bancos são criados vazios e cada serviço roda as próprias migrations ao iniciar (o Identidade também faz o seed).
 
@@ -59,6 +61,23 @@ curl http://localhost:8080/pagamento/health
 curl http://localhost:8080/notificacao/health
 ```
 `"status":"ok"` em todos. `"degradado"` significa Redis fora do ar (o serviço funciona, mas sem cache/eventos).
+
+## Gateway (Nginx) e Docker Compose
+O único ponto de entrada é o Nginx, na porta **8080**; os serviços, os bancos e o Redis ficam só na rede interna `backend` e não publicam porta no host. A única exceção, apenas em desenvolvimento (`--profile dev`), é a caixa de e-mails do Mailpit em `127.0.0.1:8025`.
+
+| Rota no gateway | Destino | Observação |
+|---|---|---|
+| `/identidade/`, `/catalogo/`, `/vendas/`, `/pagamento/`, `/notificacao/` | cada serviço (`:3001` a `:3005`) | o prefixo é removido antes de chegar ao serviço |
+| `/catalogo/interno/…` | bloqueada (404) | rotas internas do Vendas; vale para qualquer caixa de letras e variantes codificadas (ADR-009/010) |
+| `/docs/` | Swagger UI | contratos de `apis/` |
+| `/health` | resposta do próprio Nginx | usada no healthcheck do container |
+
+Acesso aos bancos e ao Redis, por dentro dos containers:
+```bash
+docker exec -it redis redis-cli
+docker exec -it catalogo_db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'   # idem para identidade_db, vendas_db, ...
+```
+Conferir o gateway no ambiente que está no ar: `bash scripts/verificar-gateway.sh` (acrescente `--isolamento` para parar o Vendas por alguns segundos e conferir que só ele sai do ar). Detalhes das decisões no [ADR-018](documentacao-arquiteturial/ADRs/ADR-018-gateway-nginx.md) e roteiro em [demonstracao/gateway-nginx.md](demonstracao/gateway-nginx.md).
 
 ## Testes
 ```bash
@@ -100,13 +119,14 @@ O pagamento real usa o Checkout Pro. O roteiro de teste (contas, cartões, webho
 ## Mapa do repositório
 - `identidade-service/`, `catalogo-service/`, `vendas-service/`, `pagamento-service/`, `notificacao-service/` — os serviços
 - `apis/` — contrato OpenAPI de cada serviço
-- `documentacao-arquiteturial/` — C4 (contexto, containers e [camadas de um serviço](documentacao-arquiteturial/arquitetura-em-camadas.md)), diagramas e os ADRs (decisões 001 a 015)
+- `documentacao-arquiteturial/` — C4 (contexto, containers e [camadas de um serviço](documentacao-arquiteturial/arquitetura-em-camadas.md)), diagramas, o [guia de boas práticas](documentacao-arquiteturial/boas-praticas.md) (DTOs, erros, logs e correlação), o [pipeline de CI/CD](documentacao-arquiteturial/pipeline-ci-cd.md) e os ADRs (decisões 001 a 018)
 - `ddd/` — Context Map e Bounded Contexts
+- `demonstracao/` — roteiros para demonstrar o [cache com Redis](demonstracao/cache-redis.md), a [mensageria com Pub/Sub](demonstracao/mensageria-pubsub.md), o [gateway Nginx](demonstracao/gateway-nginx.md), o [rastreio de um fluxo pelos logs](demonstracao/rastreio-de-fluxo.md), os [SLOs medidos e a resiliência em ação](demonstracao/resiliencia-e-slos.md) e o [deploy e rollback ensaiados](demonstracao/deploy-e-rollback.md)
 - `requisitos/` — requisitos funcionais e não funcionais
-- `qualidade-observabilidade/` — cenários de qualidade e SLOs
+- `qualidade-observabilidade/` — SLOs e SLIs, estratégias de resiliência e plano de observabilidade
 - `operacao/` — runbook de incidentes
-- `scripts/` — deploy, rollback e verificação dos contratos e das camadas
+- `scripts/` — deploy, rollback, verificação dos contratos, das camadas e do gateway, `seguir-id.sh` (segue um id de correlação nos logs dos 5 serviços) e `medir-slos.js` (mede os SLOs a partir de `/metrics` e do log do Nginx)
 - `tech-forge/` — Cynefin e ciclo de vida
-- `infra/nginx/` — configuração do gateway · `infra/swagger/` — página do Swagger UI
+- `infra/nginx/` — configuração do gateway (`nginx.conf` e `proxy-headers.conf`) · `infra/swagger/` — página do Swagger UI
 - `keys/` — gerador do par de chaves JWT
 - `e2e/` — testes ponta a ponta

@@ -81,6 +81,7 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
         method: 'POST',
         headers,
         body: preferencia,
+        propagarCorrelacao: false, // serviço externo: não recebe o id de correlação interno
       });
       if ((r.status !== 201 && r.status !== 200) || !r.corpo?.id) {
         throw new ErroHttp(502, 'O Mercado Pago recusou a criação do pagamento');
@@ -96,6 +97,7 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
       const r = await chamar<RespostaPagamento>(SERVICO, `${BASE}/v1/payments/${encodeURIComponent(idExterno)}`, {
         headers,
         tentativas: 2,
+        propagarCorrelacao: false,
       });
       if (r.status === 404) return null;
       if (r.status !== 200 || !r.corpo) throw new ErroHttp(502, 'Resposta inesperada do Mercado Pago');
@@ -107,6 +109,7 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
       const r = await chamar<RespostaBusca>(SERVICO, `${BASE}/v1/payments/search?${consulta}`, {
         headers,
         tentativas: 2,
+        propagarCorrelacao: false,
       });
       if (r.status !== 200 || !r.corpo) throw new ErroHttp(502, 'Resposta inesperada do Mercado Pago');
       return (r.corpo.results ?? []).map(paraPagamentoExterno);
