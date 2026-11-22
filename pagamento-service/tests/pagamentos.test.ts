@@ -6,6 +6,7 @@ import { Pagamento } from '../src/models';
 import * as vendas from '../src/clients/vendasClient';
 import { obterGateway } from '../src/gateways';
 import { ErroHttp } from '../src/middlewares/errorHandler';
+import { logger } from '../src/utils/logger';
 import { tokenDe, bearer, pedidoVendas, pagamentoCom } from './helpers';
 
 const api = request(app);
@@ -86,6 +87,26 @@ describe('POST /pagamentos', () => {
       });
       expect(evento.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(JSON.stringify(evento)).not.toMatch(/45999990000/); // sem telefone
+    });
+
+    it('inclui no envelope o id de correlação da requisição que originou o evento', async () => {
+      await api.post('/pagamentos').set(cliente).set('x-correlation-id', 'corr-abc').send(corpo);
+      expect(JSON.parse(publicar.mock.calls[0][1]).idCorrelacao).toBe('corr-abc');
+    });
+
+    it('registra em log o evento publicado, com o id do evento e o número de receptores', async () => {
+      const info = jest.spyOn(logger, 'info');
+      try {
+        await api.post('/pagamentos').set(cliente).send(corpo);
+
+        const evento = JSON.parse(publicar.mock.calls[0][1]);
+        expect(info).toHaveBeenCalledWith(
+          expect.objectContaining({ idEvento: evento.id, tipo: 'pagamento.confirmado', idPedido: 77, receptores: expect.any(Number) }),
+          'evento publicado'
+        );
+      } finally {
+        info.mockRestore();
+      }
     });
 
     it('envia ao gateway os itens, o e-mail e o frete do pedido', async () => {
@@ -552,6 +573,14 @@ describe('saúde e métricas', () => {
     const r = await api.get('/health');
     expect(r.status).toBe(200);
     expect(r.body.banco).toBe('ok');
+  });
+
+  it('contabiliza o erro de negócio na rota certa (/pagamentos), para os SLIs enxergarem as falhas', async () => {
+    buscarPedido.mockResolvedValue(null);
+    expect((await api.post('/pagamentos').set(cliente).send(corpo)).status).toBe(404);
+    const r = await api.get('/metrics').set({ Authorization: 'Bearer token-de-teste' });
+    expect(r.text).toContain('metodo="POST",rota="/pagamentos",status="404"');
+    expect(r.text).not.toContain('rota="/",status="404"');
   });
 
   it('GET /metrics exige o token de métricas', async () => {

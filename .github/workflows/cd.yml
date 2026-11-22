@@ -13,13 +13,14 @@ permissions:
   packages: write
 
 jobs:
-  # Só publica se o CI da mesma versão passaria: roda de novo a tipagem e os testes que não precisam de banco.
+  # Só publica se o CI da mesma versão passaria: tipagem dos 5 serviços e os testes dos que não precisam de banco
+  # (Identidade e Catálogo usam MySQL nos testes, que ficam por conta do CI).
   verificar:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
       matrix:
-        servico: [notificacao-service, vendas-service, pagamento-service]
+        servico: [identidade-service, catalogo-service, notificacao-service, vendas-service, pagamento-service]
     defaults:
       run:
         working-directory: ${{ matrix.servico }}
@@ -32,7 +33,9 @@ jobs:
           cache-dependency-path: ${{ matrix.servico }}/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npx jest --runInBand
+      - name: Testes (só os serviços que não precisam de banco)
+        if: matrix.servico != 'identidade-service' && matrix.servico != 'catalogo-service'
+        run: npx jest --runInBand
 
   publicar-imagens:
     needs: verificar

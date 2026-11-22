@@ -90,6 +90,14 @@ describe('saúde e métricas', () => {
     expect(r.body.banco).toBe('ok');
   });
 
+  it('contabiliza o erro de negócio na rota certa (/logs/:idPedido), para os SLIs enxergarem as falhas', async () => {
+    logMock.findAll.mockResolvedValue([]);
+    expect((await api.get('/logs/7').set(auth(token(['pedidos:listar-todos'])))).status).toBe(404);
+    const r = await api.get('/metrics').set(auth('token-de-teste'));
+    expect(r.text).toContain('metodo="GET",rota="/logs/:idPedido",status="404"');
+    expect(r.text).not.toContain('rota="/:idPedido",status="404"');
+  });
+
   it('GET /metrics exige o token de métricas', async () => {
     expect((await api.get('/metrics')).status).toBe(401);
     const r = await api.get('/metrics').set(auth('token-de-teste'));

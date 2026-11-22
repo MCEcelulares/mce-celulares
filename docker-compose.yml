@@ -1,3 +1,8 @@
+# Nome fixo do projeto: a rede (mce-celulares_backend) e os volumes não dependem do nome da pasta.
+name: mce-celulares
+
+# Padrão: só o Nginx publica porta no host. Bancos e Redis são acessados por `docker exec` (veja o README).
+# Única exceção, só em desenvolvimento (profile "dev"): a caixa de e-mails do Mailpit.
 networks:
     backend:
         driver: bridge
@@ -18,8 +23,6 @@ services:
         environment:
             MYSQL_DATABASE: ${IDENTIDADE_DB_NAME}
             MYSQL_ROOT_PASSWORD: ${IDENTIDADE_DB_PASSWORD}
-        ports:
-          - "127.0.0.1:3307:3306"
         volumes:
           - identidade_db_data:/var/lib/mysql
         healthcheck:
@@ -107,8 +110,6 @@ services:
       image: redis:7-alpine
       container_name: redis
       restart: unless-stopped
-      ports:
-        - "127.0.0.1:6379:6379"
       healthcheck:
         test: ["CMD", "redis-cli", "ping"]
         interval: 5s
@@ -224,7 +225,26 @@ services:
         - "8080:80"
       volumes:
         - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+        - ./infra/nginx/proxy-headers.conf:/etc/nginx/proxy-headers.conf:ro
         - ./infra/swagger/index.html:/usr/share/nginx/docs/index.html:ro
         - ./apis:/usr/share/nginx/docs/apis:ro
+      healthcheck:
+        test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+        interval: 10s
+        timeout: 3s
+        retries: 5
+        start_period: 5s
+      networks:
+        - backend
+
+    # Caixa de e-mails de desenvolvimento (nenhum e-mail sai de verdade): docker compose --profile dev up -d
+    # No notificacao-service/.env: SMTP_HOST=mailpit e SMTP_PORT=1025. Caixa de entrada: http://127.0.0.1:8025
+    mailpit:
+      image: axllent/mailpit
+      container_name: mailpit
+      profiles: ["dev"]
+      restart: unless-stopped
+      ports:
+        - "127.0.0.1:8025:8025"
       networks:
         - backend

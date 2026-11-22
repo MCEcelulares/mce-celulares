@@ -444,6 +444,13 @@ describe('observabilidade (RNF05, RNF11)', () => {
     expect((await api.get('/health/live')).headers['x-correlation-id']).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it('contabiliza o erro de negócio na rota certa (/auth/login), para os SLIs enxergarem as falhas', async () => {
+    expect((await api.post('/auth/login').send({ email: email('ninguem-metricas'), senha: '123456' })).status).toBe(401);
+    const r = await api.get('/metrics').set('Authorization', 'Bearer token-de-teste');
+    expect(r.text).toContain('metodo="POST",rota="/auth/login",status="401"');
+    expect(r.text).not.toContain('rota="/login",status="401"');
+  });
+
   it('métricas exigem token e usam o padrão da rota (sem ids)', async () => {
     expect((await api.get('/metrics')).status).toBe(401);
     const r = await api.get('/metrics').set('Authorization', 'Bearer token-de-teste');

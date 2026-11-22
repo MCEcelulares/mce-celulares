@@ -2,6 +2,7 @@ import { UniqueConstraintError } from 'sequelize';
 import { NotificacaoLog } from '../src/models';
 import { enviarEmail } from '../src/services/emailService';
 import { tratarMensagem } from '../src/services/assinanteService';
+import { logger } from '../src/utils/logger';
 
 const logMock = NotificacaoLog as unknown as { create: jest.Mock; findOne: jest.Mock };
 const emailMock = enviarEmail as jest.Mock;
@@ -42,6 +43,57 @@ describe('pedido.criado', () => {
       expect.objectContaining({ para: 'fulano@mce.test', assunto: expect.stringContaining('#123') })
     );
     expect(log.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'ENVIADO' }));
+  });
+
+  it('registra em log o evento recebido e o e-mail enviado, na ordem', async () => {
+    const info = jest.spyOn(logger, 'info');
+    try {
+      await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+
+      expect(info).toHaveBeenCalledWith(
+        { canal: 'pedido.criado', idEvento: 'a3c1f1de-0000-4000-8000-000000000001', origem: 'teste', idPedido: 123 },
+        'evento recebido'
+      );
+      expect(info).toHaveBeenCalledWith(expect.objectContaining({ idPedido: 123, tipo: 'PEDIDO_CRIADO' }), 'e-mail enviado');
+      const mensagens = info.mock.calls.map((c) => c[1]);
+      expect(mensagens.indexOf('evento recebido')).toBeLessThan(mensagens.indexOf('e-mail enviado'));
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('registra o id de correlação de origem quando o evento o traz, e aceita eventos sem ele', async () => {
+    const info = jest.spyOn(logger, 'info');
+    try {
+      await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado, { idCorrelacao: 'corr-abc' }));
+      expect(info).toHaveBeenCalledWith(expect.objectContaining({ idCorrelacaoOrigem: 'corr-abc' }), 'evento recebido');
+      expect(emailMock).toHaveBeenCalledTimes(1);
+
+      emailMock.mockClear();
+      logMock.create.mockResolvedValue(log);
+      await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado)); // sem idCorrelacao
+      expect(emailMock).toHaveBeenCalledTimes(1);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('descarta evento cujo idCorrelacao não é texto (fora do contrato)', async () => {
+    await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado, { idCorrelacao: 123 }));
+    expect(emailMock).not.toHaveBeenCalled();
+  });
+
+  it('não registra "e-mail enviado" quando o envio falha', async () => {
+    const info = jest.spyOn(logger, 'info');
+    try {
+      emailMock.mockRejectedValue(new Error('smtp fora do ar'));
+      await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
+
+      expect(info).toHaveBeenCalledWith(expect.anything(), 'evento recebido');
+      expect(info).not.toHaveBeenCalledWith(expect.anything(), 'e-mail enviado');
+    } finally {
+      info.mockRestore();
+    }
   });
 
   it('ignora evento duplicado já enviado (UNIQUE id_pedido + tipo)', async () => {

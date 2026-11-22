@@ -5,6 +5,7 @@ import { obterGateway } from '../src/gateways';
 import { criarGatewayMercadoPago } from '../src/gateways/mercadoPago';
 import * as vendas from '../src/clients/vendasClient';
 import { ErroHttp } from '../src/middlewares/errorHandler';
+import { contextoRequisicao } from '../src/utils/contexto';
 
 const resposta = (status: number, corpo?: unknown) =>
   ({
@@ -257,5 +258,33 @@ describe('Vendas (cliente)', () => {
     await rejeitaCom(vendas.buscarPedido(77), 503);
     await rejeitaCom(vendas.atualizarStatus(77, 'PAGO'), 503);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Propagação do id de correlação', () => {
+  it('o cliente do Vendas repassa o x-correlation-id da requisição em andamento', async () => {
+    fetchMock.mockResolvedValue(resposta(200, { id_pedido: 77, status: 'AGUARDANDO_PAGAMENTO' }));
+    await contextoRequisicao.run({ idCorrelacao: 'corr-123' }, () => vendas.buscarPedido(77));
+    expect(fetchMock.mock.calls[0][1].headers['x-correlation-id']).toBe('corr-123');
+  });
+
+  it('o Mercado Pago (serviço externo) NÃO recebe o id de correlação interno', async () => {
+    const gateway = criarGatewayMercadoPago('APP_USR-token');
+    const dados = { idPedido: 77, valor: 125, emailCliente: 'rafael@mce.test', valorFrete: 0, expiraEm: null as string | null, itens: [{ id: '10', titulo: 'iPhone', quantidade: 1, precoUnitario: 125 }] };
+
+    await contextoRequisicao.run({ idCorrelacao: 'corr-123' }, async () => {
+      fetchMock.mockResolvedValue(resposta(201, { id: 'pref-1', init_point: 'x' }));
+      await gateway.iniciar(dados);
+      fetchMock.mockResolvedValue(resposta(200, { id: 9, status: 'approved', external_reference: '77', transaction_amount: 125 }));
+      await gateway.consultarPagamento('9');
+      fetchMock.mockResolvedValue(resposta(200, { results: [] }));
+      await gateway.buscarPagamentosPorReferencia('77');
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.headers['x-correlation-id']).toBeUndefined();
+      expect(init.headers.Authorization).toBe('Bearer APP_USR-token');
+    }
   });
 });

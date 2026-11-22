@@ -77,3 +77,25 @@ O evento carrega todos os dados necessários para o consumidor agir. O Notifica�
 - `notificacao_log` guarda `assunto` e `texto` do e-mail e conta as rodadas de envio (`tentativas`). Uma rotina reenvia sozinha as notificações em `FALHA` (e as `PENDENTE` presas há mais de 10 minutos), com espera que dobra a cada rodada (2, 4, 8… até 60 min) e no máximo `NOTIFICACAO_REENVIO_MAX_TENTATIVAS` rodadas (padrão 5); depois fica em `FALHA` definitiva.
 - Cada notificação é reivindicada por UPDATE condicional, então só uma instância envia. Isso substitui a "limitação conhecida" anterior (registro preso em `PENDENTE` ignorava eventos republicados).
 - Registros anteriores a essa mudança não têm conteúdo guardado e não são reenviados. A listagem por pedido não expõe o `texto`.
+
+## Atualização (2026-11-22) — logs que comprovam a circulação dos eventos
+Até aqui os logs só registravam falhas de publicação e descartes; o caminho feliz não deixava rastro nos logs (só no Redis e no banco). Agora cada etapa do evento gera uma linha de log, ligadas pelo `idEvento` (o `id` do envelope):
+
+| Etapa | Serviço | Mensagem (`msg`) | Campos principais |
+|---|---|---|---|
+| Publicação | Vendas, Pagamento | `evento publicado` | `idEvento`, `tipo`, `idPedido`, `receptores` |
+| Recebimento | Notificação | `evento recebido` | `canal`, `idEvento`, `origem`, `idPedido` |
+| Efeito | Notificação | `e-mail enviado` | `idPedido`, `tipo`, `rodadas` |
+| Repetido | Notificação | `notificação já registrada, evento ignorado` | `idPedido`, `tipo` |
+| Fora do contrato | Notificação | `evento descartado` (nível `warn`) | `canal`, `motivo` |
+| Falha ao publicar | Vendas, Pagamento | `falha ao publicar evento` (nível `error`) | `idPedido`, `tipo` |
+
+- **`receptores`** é o número devolvido pelo `PUBLISH` do Redis: quantos assinantes receberam a mensagem. `0` significa que ninguém estava ouvindo (a mensagem se perdeu, característica do Pub/Sub, aceita neste ADR).
+- **Correlação:** o consumidor usa o `id` do evento como `idCorrelacao` ao processá-lo, então todas as linhas do lado da Notificação (`evento recebido`, `e-mail enviado`, `notificação já registrada...`) carregam o mesmo `idCorrelacao` do `idEvento` publicado. Buscar esse id nos logs dos serviços reconstrói o caminho do evento. Roteiro em [demonstracao/mensageria-pubsub.md](../../demonstracao/mensageria-pubsub.md).
+- O log de publicação não inclui dados do cliente (nem e-mail): só identificadores.
+
+## Atualização (2026-11-22) — `idCorrelacao` opcional no envelope
+O envelope ganhou um campo **opcional**, `idCorrelacao`: o `x-correlation-id` da requisição HTTP que originou o evento (preenchido por Vendas e Pagamento a partir do contexto da requisição).
+- **Compatível:** a `versao` continua 1. Um consumidor que não conhece o campo o ignora (o schema Zod do consumidor descarta chaves desconhecidas), e um evento sem o campo continua válido. Se o campo vier, deve ser texto de 1 a 100 caracteres; de outro tipo, o evento é descartado como fora do contrato.
+- **Rastreio:** a Notificação, que usa o `id` do evento como `idCorrelacao` dos próprios logs, registra o id da requisição de origem em `evento recebido` (campo `idCorrelacaoOrigem`). Assim é possível seguir uma compra da requisição HTTP, passando pelos serviços chamados (que agora recebem o mesmo `x-correlation-id`), até o e-mail. Veja `scripts/seguir-id.sh` e [demonstracao/rastreio-de-fluxo.md](../../demonstracao/rastreio-de-fluxo.md).
+- Continua valendo: o evento não carrega CPF, telefone nem outros dados além do mínimo definido neste ADR.
