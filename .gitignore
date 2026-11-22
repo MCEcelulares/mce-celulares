@@ -8,3 +8,5 @@ catalogo-service/uploads/
 # build do TypeScript e estado do deploy no servidor
 dist/
 .deploy/
+# linha de base local do scripts/medir-slos.js
+.slo-baseline.json

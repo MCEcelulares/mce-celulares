@@ -1,6 +1,7 @@
 import { ErroHttp } from '../middlewares/errorHandler';
 import { logger } from '../utils/logger';
 import { registrarEvento } from '../utils/metricas';
+import { contextoRequisicao } from '../utils/contexto';
 
 const timeoutMs = () => Number(process.env.HTTP_TIMEOUT_MS ?? 5000);
 // Espera entre tentativas: base, 2x base, 4x base... (200ms, 400ms, ...)
@@ -16,6 +17,9 @@ interface Opcoes {
   body?: unknown;
   // Só chamadas idempotentes (GET, reserva e devolução por pedido) devem ter mais de uma tentativa.
   tentativas?: number;
+  // Repassa o x-correlation-id da requisição em andamento, para o fluxo ser rastreável entre os serviços.
+  // Desligue em chamadas a sistemas externos (ex.: Mercado Pago).
+  propagarCorrelacao?: boolean;
 }
 
 export interface Resposta<T> {
@@ -95,7 +99,8 @@ const esperar = (ms: number) => (ms > 0 ? new Promise<void>((resolve) => setTime
 // Falha de rede, timeout ou 5xx do outro serviço (depois das tentativas) viram 503 aqui.
 // Resposta 4xx é resposta válida do outro serviço: não conta como falha para o circuito.
 export async function chamar<T>(servico: string, url: string, opcoes: Opcoes = {}): Promise<Resposta<T>> {
-  const { method = 'GET', headers = {}, body, tentativas = 1 } = opcoes;
+  const { method = 'GET', headers = {}, body, tentativas = 1, propagarCorrelacao = true } = opcoes;
+  const idCorrelacao = propagarCorrelacao ? contextoRequisicao.getStore()?.idCorrelacao : undefined;
 
   liberarChamada(servico);
 
@@ -106,7 +111,7 @@ export async function chamar<T>(servico: string, url: string, opcoes: Opcoes = {
     try {
       const resposta = await fetch(url, {
         method,
-        headers: { 'content-type': 'application/json', ...headers },
+        headers: { 'content-type': 'application/json', ...(idCorrelacao && { 'x-correlation-id': idCorrelacao }), ...headers },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(timeoutMs()),
       });

@@ -64,6 +64,10 @@ async function executar() {
   // rotas internas: bloqueadas no gateway; só o Vendas (token de serviço) chega nelas
   ok((await req('GET', `/catalogo/interno/produtos?ids=${iphone.id_produto}`)).s === 404, 'gateway bloqueia /catalogo/interno/ (GET) -> 404');
   ok((await req('POST', '/catalogo/interno/reservas', { id_pedido: 1, itens: [] }, admin)).s === 404, 'gateway bloqueia /catalogo/interno/ (POST, mesmo com JWT de admin) -> 404');
+  // variantes que tentam contornar o bloqueio (o Express não diferencia maiúsculas; o Nginx decodifica % e junta //)
+  for (const caminho of ['/catalogo/Interno/produtos?ids=1', '/catalogo/INTERNO/reservas/1', '/catalogo/%69nterno/produtos?ids=1', '//catalogo/interno/produtos?ids=1']) {
+    ok((await req('GET', caminho)).s === 404, `gateway bloqueia ${caminho} -> 404`);
+  }
   ok(interno('GET', `/interno/produtos?ids=${iphone.id_produto}`, null, 'sem').s === 401, 'rota interna sem token de serviço -> 401');
   ok(interno('GET', `/interno/produtos?ids=${iphone.id_produto}`, null, 'errado').s === 401, 'rota interna com token de serviço errado -> 401');
   r = interno('GET', `/interno/produtos?ids=${iphone.id_produto},${capa.id_produto}`);

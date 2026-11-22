@@ -83,6 +83,7 @@ async function executarEnvio(
     await enviarComTentativas({ para: destinatario, assunto, texto });
     await notificacaoLogRepository.atualizar(log, { status: 'ENVIADO', enviado_em: new Date(), tentativas: rodadas });
     registrarEvento('email_enviado');
+    logger.info({ idPedido, tipo, rodadas }, 'e-mail enviado');
     if (ocorridoEm) registrarEntrega(tipo, ocorridoEm);
   } catch (err) {
     const motivo = err instanceof Error ? err.message : String(err);

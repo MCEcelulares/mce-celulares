@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { redis } from '../config/redis';
 import { registrarEvento } from './metricas';
 import { logger } from './logger';
+import { contextoRequisicao } from './contexto';
 
 export interface PedidoCriadoDados {
   idPedido: number;
@@ -20,10 +21,14 @@ export async function publicarPedidoCriado(dados: PedidoCriadoDados): Promise<vo
     versao: 1,
     origem: 'vendas-service',
     ocorridoEm: new Date().toISOString(),
+    // id da requisição que originou o evento (opcional, ADR-008): liga o fluxo HTTP ao consumo do evento
+    idCorrelacao: contextoRequisicao.getStore()?.idCorrelacao,
     dados,
   };
   try {
-    await redis.publish(tipo, JSON.stringify(envelope));
+    // publish devolve quantos assinantes receberam a mensagem: 0 significa que ninguém estava ouvindo.
+    const receptores = await redis.publish(tipo, JSON.stringify(envelope));
+    logger.info({ idEvento: envelope.id, tipo, idPedido: dados.idPedido, receptores }, 'evento publicado');
   } catch (err) {
     registrarEvento('evento_nao_publicado');
     logger.error({ err, idPedido: dados.idPedido, tipo }, 'falha ao publicar evento');

@@ -35,6 +35,11 @@ export async function tratarMensagem(canal: string, mensagem: string): Promise<v
   const { id, ocorridoEm, dados } = envelope.data;
 
   await contextoRequisicao.run({ idCorrelacao: id }, async () => {
+    const idPedido = (dados as { idPedido?: unknown } | null)?.idPedido;
+    logger.info(
+      { canal, idEvento: id, origem: envelope.data.origem, idPedido, idCorrelacaoOrigem: envelope.data.idCorrelacao },
+      'evento recebido'
+    );
     if (canal === 'pedido.criado') {
       const parsed = pedidoCriadoSchema.safeParse(dados);
       if (!parsed.success) return descartar('dados fora do contrato', canal);

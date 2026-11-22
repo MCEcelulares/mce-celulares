@@ -5,7 +5,7 @@ Abre a caixa "Sistema MCEcelulares" e mostra as peças internas: os 5 microsserv
 ```mermaid
 graph TD
     Cliente([Cliente - navegador/app])
-    FE["Frontend<br/>(Next.js)"]
+    FE["Frontend<br/>(React + Vite)"]
     GW["API Gateway<br/>(Nginx)"]
 
     SVC_ID["Serviço Identidade<br/>(Node/Express)"]
@@ -44,7 +44,8 @@ graph TD
     SVC_PAG -->|"HTTP: cria preferência e consulta pagamento"| MP
     MP -.->|"webhook de pagamento (via Gateway)"| GW
 
-    SVC_CAT -.->|"cache-aside produto:{id}"| REDIS
+    SVC_CAT -.->|"cache-aside (produtos, categorias, marcas)"| REDIS
+    SVC_ID -.->|"refresh token"| REDIS
 
     SVC_VEN -.->|"publica pedido.criado"| REDIS
     SVC_PAG -.->|"publica pagamento.confirmado"| REDIS
@@ -57,15 +58,15 @@ graph TD
 
 | Container | Tecnologia | Responsabilidade |
 |---|---|---|
-| Frontend | Next.js | Telas do e-commerce (home, produtos, conta, carrinho, etc.) |
+| Frontend | React + Vite + TypeScript (Tailwind, React Router); repositório `mcecelulares-frontend` | Telas do e-commerce (home, produtos, conta, carrinho, etc.); fala só com o Gateway (`VITE_API_URL`, padrão `http://localhost:8080`) |
 | API Gateway | Nginx | Ponto único de entrada, roteia por prefixo pra cada serviço |
 | Serviço Identidade | Node/Express + Sequelize | Usuários, autenticação, endereços, cargos/permissões |
 | Serviço Catálogo | Node/Express + Sequelize | Produtos, categorias, marcas, busca e filtros |
 | Serviço Vendas | Node/Express + Sequelize | Carrinho, criação e acompanhamento de pedidos |
 | Serviço Pagamento | Node/Express + Sequelize | Pagamento via Checkout Pro do Mercado Pago, webhook de confirmação e status de pagamento |
 | Serviço Notificação | Node/Express + Sequelize | Envio de e-mails transacionais e formulário de contato |
-| Redis | Redis | Cache-aside (produto), sessão renovável do Identidade (ADR-007) e mensageria Pub/Sub |
-| Bancos MySQL | MySQL (x5) | Um banco isolado por serviço, sem FK entre eles; o schema é criado pelas migrations de cada serviço |
+| Redis | Redis 7 | Cache-aside do Catálogo (produtos, categorias e marcas, com TTL e invalidação por versão), refresh token do Identidade (ADR-007) e mensageria Pub/Sub |
+| Bancos MySQL | MySQL 8.0 (x5) | Um banco isolado por serviço, sem FK entre eles (ADR-002); o schema é criado pelas migrations de cada serviço; escolha da tecnologia no ADR-016 |
 
 ## Decisões que complementam este desenho
 - **Vendas → Catálogo** (consulta de preço/estoque, reserva por pedido e devolução idempotente, com recuperação de órfãos): ADR-009.

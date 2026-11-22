@@ -16,7 +16,7 @@ const duracao = new client.Histogram({
   name: 'http_requisicao_duracao_segundos',
   help: 'Duração das requisições HTTP',
   labelNames: ['metodo', 'rota', 'status'],
-  buckets: [0.01, 0.05, 0.1, 0.3, 0.5, 1, 2, 5],
+  buckets: [0.01, 0.05, 0.1, 0.3, 0.5, 1, 1.5, 2, 5],
   registers: [registro],
 });
 
@@ -46,7 +46,16 @@ export function registrarEntrega(tipo: string, ocorridoEm: string) {
 
 function rotulo(req: Request): string {
   if (!req.route) return 'nao_encontrada';
-  return `${req.baseUrl}${req.route.path}`.replace(/\/\d+/g, '/:id').replace(/\/$/, '') || '/';
+  const rota = String(req.route.path);
+  // Quando o erro passa pelo errorHandler, o Express já restaurou req.baseUrl ('' em vez de '/pedidos'), e o rótulo
+  // ficaria só com o trecho da rota ('/'). Nesse caso o prefixo é reconstruído a partir da URL original.
+  let prefixo = req.baseUrl;
+  if (!prefixo) {
+    const partes = req.originalUrl.split('?')[0].split('/').filter(Boolean);
+    const restantes = partes.length - rota.split('/').filter(Boolean).length;
+    prefixo = restantes > 0 ? `/${partes.slice(0, restantes).join('/')}` : '';
+  }
+  return `${prefixo}${rota}`.replace(/\/\d+/g, '/:id').replace(/\/$/, '') || '/';
 }
 
 export function medirRequisicao(req: Request, res: Response, next: NextFunction) {

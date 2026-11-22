@@ -6,6 +6,7 @@ import { Carrinho, Pedido, ItemPedido, EnderecoPedido, UsuarioPedido } from '../
 import * as catalogo from '../src/clients/catalogoClient';
 import * as identidade from '../src/clients/identidadeClient';
 import { ErroHttp } from '../src/middlewares/errorHandler';
+import { logger } from '../src/utils/logger';
 import { tokenDe, bearer, servico, itemCarrinho, carrinhoCom, produtoCatalogo, pedidoCom } from './helpers';
 
 const api = request(app);
@@ -116,6 +117,41 @@ describe('POST /pedidos', () => {
     expect(evento.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(new Date(evento.ocorridoEm).toString()).not.toBe('Invalid Date');
     expect(JSON.stringify(evento)).not.toMatch(/52998224725|45999990000/); // sem CPF nem telefone
+  });
+
+  it('registra em log o evento publicado, com o id do evento e o número de receptores', async () => {
+    const info = jest.spyOn(logger, 'info');
+    try {
+      await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
+
+      const evento = JSON.parse(publicar.mock.calls[0][1]);
+      expect(info).toHaveBeenCalledWith(
+        expect.objectContaining({ idEvento: evento.id, tipo: 'pedido.criado', idPedido: 77, receptores: expect.any(Number) }),
+        'evento publicado'
+      );
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('inclui no envelope o id de correlação da requisição que originou o evento', async () => {
+    await api.post('/pedidos').set(cliente).set('x-correlation-id', 'corr-abc').send({ idEndereco: 3 });
+    expect(JSON.parse(publicar.mock.calls[0][1]).idCorrelacao).toBe('corr-abc');
+  });
+
+  it('não registra "evento publicado" se a publicação falhar (registra o erro)', async () => {
+    const info = jest.spyOn(logger, 'info');
+    const erro = jest.spyOn(logger, 'error');
+    try {
+      publicar.mockRejectedValueOnce(new Error('redis fora do ar'));
+      await api.post('/pedidos').set(cliente).send({ idEndereco: 3 });
+
+      expect(info).not.toHaveBeenCalledWith(expect.anything(), 'evento publicado');
+      expect(erro).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'pedido.criado' }), 'falha ao publicar evento');
+    } finally {
+      info.mockRestore();
+      erro.mockRestore();
+    }
   });
 
   it('não devolve CPF nem id_envio_externo na resposta', async () => {
@@ -442,6 +478,14 @@ describe('saúde e métricas', () => {
     const r = await api.get('/health');
     expect(r.status).toBe(200);
     expect(r.body.banco).toBe('ok');
+  });
+
+  it('contabiliza o erro de negócio na rota certa (/pedidos), para os SLIs enxergarem as falhas', async () => {
+    carrinhoMock.findOne.mockResolvedValue(null);
+    expect((await api.post('/pedidos').set(cliente).send({ idEndereco: 3 })).status).toBe(422);
+    const r = await api.get('/metrics').set({ Authorization: 'Bearer token-de-teste' });
+    expect(r.text).toContain('metodo="POST",rota="/pedidos",status="422"');
+    expect(r.text).not.toContain('rota="/",status="422"');
   });
 
   it('GET /metrics exige o token de métricas', async () => {
