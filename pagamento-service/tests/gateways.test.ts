@@ -116,9 +116,9 @@ describe('Mercado Pago — iniciar (preferência)', () => {
     const corpo = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(corpo.notification_url).toBe('https://loja.com/pagamento/pagamentos/webhook');
     expect(corpo.back_urls).toEqual({
-      success: 'https://loja.com/pedidos/77',
-      pending: 'https://loja.com/pedidos/77',
-      failure: 'https://loja.com/pedidos/77',
+      success: 'https://loja.com/checkout/retorno/77',
+      pending: 'https://loja.com/checkout/retorno/77',
+      failure: 'https://loja.com/checkout/retorno/77',
     });
     expect(corpo.auto_return).toBe('approved');
   });
