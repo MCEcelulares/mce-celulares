@@ -80,13 +80,24 @@ docker exec -it catalogo_db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL
 Conferir o gateway no ambiente que está no ar: `bash scripts/verificar-gateway.sh` (acrescente `--isolamento` para parar o Vendas por alguns segundos e conferir que só ele sai do ar). Detalhes das decisões no [ADR-018](documentacao-arquiteturial/ADRs/ADR-018-gateway-nginx.md) e roteiro em [demonstracao/gateway-nginx.md](demonstracao/gateway-nginx.md).
 
 ## Testes
+Os testes de **Vendas, Pagamento e Notificação** usam mocks e rodam direto na sua máquina (um serviço por vez):
 ```bash
-# unitários (não precisam de Docker), um por serviço
-cd catalogo-service && npm ci && npx tsc --noEmit && npx jest --runInBand
-# ponta a ponta, contra o ambiente que está no ar
+cd vendas-service && npm ci && npx tsc --noEmit && npx jest --runInBand
+```
+Os de **Identidade e Catálogo** usam um MySQL de verdade (criam e apagam dados de teste no banco do ambiente). O host do banco (`identidade_db`, `catalogo_db`) só existe dentro da rede do Docker, então rode-os num container dessa rede, com o ambiente no ar (`docker compose up -d`):
+```bash
+# Linux/macOS (no Git Bash do Windows, use MSYS_NO_PATHCONV=1 e "$(pwd -W)" no lugar de "$PWD")
+docker run --rm --network mce-celulares_backend -v "$PWD:/src:ro" node:20 sh -c '
+  mkdir /app && cd /src/catalogo-service && tar cf - --exclude=node_modules --exclude=dist . | tar xf - -C /app &&
+  cd /app && npm ci && npx tsc --noEmit && npx jest --runInBand'
+```
+(troque `catalogo-service` por `identidade-service` para o outro). Rodar esses dois no host, sem a rede do Docker, falha com `ENOTFOUND`.
+
+Ponta a ponta, contra o ambiente que está no ar:
+```bash
 node e2e/executar.js
 ```
-Veja [e2e/README.md](e2e/README.md) e o [CI](.github/workflows/ci.yml), que roda tipagem, testes (os 5 serviços), validação dos contratos contra as rotas, regra de camadas (`python3 scripts/verificar-camadas.py`), `nginx -t` e o build das imagens.
+Antes, suba os limites de login e cadastro no `identidade-service/.env` (instruções em [e2e/README.md](e2e/README.md)). O [CI](.github/workflows/ci.yml) roda tipagem e testes dos 5 serviços (com um MySQL próprio), a validação dos contratos contra as rotas, a regra de camadas (`python3 scripts/verificar-camadas.py`), `nginx -t` e o build das imagens.
 
 ## Arquitetura em camadas
 Cada serviço segue `routes → controllers → services → repositories → models`; só os repositories falam com o Sequelize (ADR-015). Mapa completo: [arquitetura-em-camadas.md](documentacao-arquiteturial/arquitetura-em-camadas.md). Ao criar uma entidade nova, crie o repository dela e rode `python3 scripts/verificar-camadas.py`.
