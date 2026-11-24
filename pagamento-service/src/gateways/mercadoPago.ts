@@ -56,6 +56,8 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
 
       const urlPublica = process.env.PUBLIC_BASE_URL;
       const urlLoja = process.env.FRONTEND_URL;
+      // Tela de retorno do front-end: ela confirma o pagamento no back-end (sincronizar) antes de mostrar o resultado.
+      const urlRetorno = urlLoja ? `${urlLoja.replace(/\/$/, '')}/checkout/retorno/${dados.idPedido}` : undefined;
       const preferencia = {
         items: itens,
         payer: { email: dados.emailCliente },
@@ -67,12 +69,8 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
           expiration_date_to: paraDataMercadoPago(dados.expiraEm),
         }),
         ...(urlPublica && { notification_url: `${urlPublica.replace(/\/$/, '')}/pagamentos/webhook` }),
-        ...(urlLoja && {
-          back_urls: {
-            success: `${urlLoja.replace(/\/$/, '')}/pedidos/${dados.idPedido}`,
-            pending: `${urlLoja.replace(/\/$/, '')}/pedidos/${dados.idPedido}`,
-            failure: `${urlLoja.replace(/\/$/, '')}/pedidos/${dados.idPedido}`,
-          },
+        ...(urlRetorno && {
+          back_urls: { success: urlRetorno, pending: urlRetorno, failure: urlRetorno },
           auto_return: 'approved',
         }),
       };
