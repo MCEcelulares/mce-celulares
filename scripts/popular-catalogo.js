@@ -23,7 +23,7 @@ function lerEnv(arquivo) {
   return saida;
 }
 
-const CATEGORIAS = ['Celulares', 'Notebooks', 'Consoles', 'Fones', 'Periféricos', 'Jogos'];
+const CATEGORIAS = ['Celulares', 'Tablets', 'Notebooks', 'Smartwatches', 'Consoles', 'Fones', 'Periféricos', 'Jogos'];
 
 // [nome, categoria, marca, preço, estoque, destaque, descrição]
 const PRODUTOS = [
@@ -34,6 +34,22 @@ const PRODUTOS = [
   ['Samsung Galaxy A55 5G 128 GB', 'Celulares', 'Samsung', 1999, 22, false, 'Tela Super AMOLED de 6,6" com 120 Hz, câmera principal de 50 MP com estabilização óptica e bateria de 5.000 mAh.'],
   ['Xiaomi Redmi Note 14 256 GB', 'Celulares', 'Xiaomi', 1599, 30, false, 'Tela AMOLED de 6,67" com 120 Hz, câmera principal de 108 MP e carregamento rápido.'],
   ['Motorola Moto G85 5G 256 GB', 'Celulares', 'Motorola', 1499, 18, false, 'Tela pOLED curva de 6,67" com 120 Hz, câmera principal de 50 MP com estabilização óptica e bateria de 5.000 mAh.'],
+
+  // ---- Tablets
+  ['Apple iPad 10ª geração 64 GB Wi-Fi', 'Tablets', 'Apple', 3499, 12, true, 'Tela Liquid Retina de 10,9", chip A14 Bionic, conexão USB-C e câmera frontal de 12 MP na lateral horizontal.'],
+  ['Apple iPad Air 11" M2 128 GB Wi-Fi', 'Tablets', 'Apple', 6299, 7, false, 'Tela Liquid Retina de 11", chip M2, compatível com Apple Pencil Pro e Magic Keyboard.'],
+  ['Samsung Galaxy Tab S9 FE 128 GB', 'Tablets', 'Samsung', 2799, 10, false, 'Tela de 10,9" com 90 Hz, S Pen incluída e resistência à água e poeira IP68.'],
+  ['Samsung Galaxy Tab A9+ 64 GB', 'Tablets', 'Samsung', 1499, 19, false, 'Tela de 11" com 90 Hz, som com quatro alto-falantes e bateria de 7.040 mAh.'],
+  ['Xiaomi Pad 6 128 GB', 'Tablets', 'Xiaomi', 2299, 14, false, 'Tela de 11" com 144 Hz, processador Snapdragon 870 e quatro alto-falantes com Dolby Atmos.'],
+  ['Lenovo Tab M10 Plus 3ª geração 128 GB', 'Tablets', 'Lenovo', 1199, 16, false, 'Tela de 10,6" em 2K, corpo metálico e quatro alto-falantes com Dolby Atmos.'],
+
+  // ---- Smartwatches
+  ['Apple Watch Series 10 GPS 42 mm', 'Smartwatches', 'Apple', 4999, 9, true, 'Tela OLED grande e mais fina, GPS, monitoramento de saúde e resistência à água.'],
+  ['Apple Watch SE 2ª geração GPS 40 mm', 'Smartwatches', 'Apple', 2499, 13, false, 'Chip S8, GPS, detecção de queda e de acidente e resistência à água.'],
+  ['Samsung Galaxy Watch7 44 mm', 'Smartwatches', 'Samsung', 2299, 11, false, 'Tela Super AMOLED, processador Exynos W1000, sensor BioActive e GPS.'],
+  ['Samsung Galaxy Watch FE 40 mm', 'Smartwatches', 'Samsung', 1299, 15, false, 'Tela Super AMOLED de 1,2", monitoramento de sono e de frequência cardíaca e GPS.'],
+  ['Xiaomi Smart Band 9', 'Smartwatches', 'Xiaomi', 349, 40, false, 'Tela AMOLED de 1,62", até 21 dias de bateria e mais de 150 modos esportivos.'],
+  ['Garmin Forerunner 165', 'Smartwatches', 'Garmin', 2199, 6, false, 'Relógio de corrida com GPS, tela AMOLED, métricas de treino e até 11 dias de bateria.'],
 
   // ---- Notebooks
   ['Apple MacBook Air 13" M3 256 GB', 'Notebooks', 'Apple', 9499, 6, true, 'Chip M3, 8 GB de memória unificada, SSD de 256 GB e tela Liquid Retina de 13,6". Leve, silencioso e sem ventoinha.'],
