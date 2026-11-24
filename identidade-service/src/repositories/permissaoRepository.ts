@@ -39,7 +39,6 @@ export function excluir(permissao: Permissao, transacao: Transacao) {
   return permissao.destroy({ transaction: transacao });
 }
 
-// A permissão nova nasce já ligada a um cargo (o administrador).
 export function vincularAoCargo(idCargo: number, idPermissao: number, transacao: Transacao) {
   return CargoPermissao.create({ id_cargo: idCargo, id_permissao: idPermissao }, { transaction: transacao });
 }

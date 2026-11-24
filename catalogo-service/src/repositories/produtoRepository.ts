@@ -81,7 +81,6 @@ export function contarPorMarca(idMarca: number) {
   return Produto.count({ where: { id_marca: idMarca } });
 }
 
-// Soma (ou subtrai, se negativo) no próprio UPDATE. Uma baixa só acontece se ainda houver estoque suficiente.
 export async function ajustarEstoque(id: number, ajuste: number) {
   const [alterados] = await Produto.update(
     { estoque: literal(`estoque + ${Math.trunc(ajuste)}`) },
@@ -90,7 +89,6 @@ export async function ajustarEstoque(id: number, ajuste: number) {
   return alterados > 0;
 }
 
-// Vale também para produto inativo. Devolve false se o produto não existe.
 export async function reporEstoque(id: number, quantidade: number) {
   const [afetadas] = await Produto.update(
     { estoque: literal(`estoque + ${Math.trunc(quantidade)}`) },
@@ -99,9 +97,6 @@ export async function reporEstoque(id: number, quantidade: number) {
   return afetadas > 0;
 }
 
-// ---- operações da reserva de estoque (sempre dentro de uma transação) ----
-
-// Trava as linhas em ordem fixa de id: serializa reservas concorrentes dos mesmos itens sem deadlock.
 export function travarPorIds(ids: number[], transacao: Transacao) {
   return Produto.findAll({
     where: { id_produto: ids },
@@ -111,7 +106,6 @@ export function travarPorIds(ids: number[], transacao: Transacao) {
   });
 }
 
-// Baixa atômica e condicional: só desconta se o produto está ativo e ainda há estoque (sem ler e depois escrever).
 export async function baixarSeHouver(id: number, quantidade: number, transacao: Transacao) {
   const [alterados] = await Produto.update(
     { estoque: literal(`estoque - ${quantidade}`) },
@@ -126,8 +120,6 @@ export function devolverQuantidade(id: number, quantidade: number, transacao: Tr
     { where: { id_produto: id }, transaction: transacao }
   );
 }
-
-// ---- painel (RF46) ----
 
 export async function contagens() {
   const [total, ativos, semEstoque, emDestaque] = await Promise.all([

@@ -22,7 +22,6 @@ const podeVerPainel = exigirPermissao('dashboard:ver');
 router.post('/', autenticar, limitarCriacaoPedido, validar(criarPedidoSchema), pedidoController.criar);
 router.get('/', autenticar, validar(listarPedidosQuerySchema, 'query'), pedidoController.listar);
 
-// Painel administrativo (RF18, RF46, RF47). Precisam vir antes de "/:id".
 router.get('/resumo', autenticar, podeVerPainel, validar(resumoQuerySchema, 'query'), painelController.resumo);
 router.get(
   '/mais-vendidos',
@@ -32,10 +31,8 @@ router.get(
   painelController.maisVendidos
 );
 
-// O Pagamento (token de serviço) lê o valor e o dono do pedido; usuários só veem os próprios (ou todos, com permissão).
 router.get('/:id', autenticarOuServico, validar(idParamSchema, 'params'), pedidoController.buscar);
 
-// Token de serviço (Pagamento) ou JWT com permissão.
 router.patch(
   '/:id/status',
   autenticarOuServico,

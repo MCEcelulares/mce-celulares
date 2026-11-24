@@ -83,8 +83,6 @@ function resumo(pedido: Pedido) {
   };
 }
 
-// Devolve ao Catálogo a reserva do pedido (idempotente e repetida em falha de rede, ver catalogoClient).
-// Se mesmo assim falhar, o pedido continua cancelado e a falha fica em log e na métrica para conciliação.
 async function devolverReservaDoPedido(idPedido: number) {
   try {
     await catalogo.devolverReserva(idPedido);
@@ -94,13 +92,10 @@ async function devolverReservaDoPedido(idPedido: number) {
   }
 }
 
-// Apaga um pedido que nunca chegou a ficar visível (ativo=false): itens, endereço, cliente e o próprio pedido.
 async function descartarPedido(idPedido: number) {
   await comTransacao((transacao) => pedidoRepository.descartarInvisivel(idPedido, transacao));
 }
 
-// Usado quando a criação já falhou: o erro original é o que importa, então uma falha aqui só vira log.
-// O pedido fica invisível no banco (ativo=false) para a recuperação de órfãos tratar depois.
 async function descartarPedidoSemFalhar(idPedido: number) {
   try {
     await descartarPedido(idPedido);
@@ -109,11 +104,8 @@ async function descartarPedidoSemFalhar(idPedido: number) {
   }
 }
 
-// Prazo para considerar "órfão" um pedido que nunca ficou visível (a criação caiu no meio). Vale também com a expiração desligada.
 export const minutosParaOrfao = () => Number(process.env.PEDIDO_ORFAO_MINUTOS ?? 10);
 
-// Recupera um pedido invisível antigo: devolve a reserva (se existir) e apaga o pedido. Se a devolução falhar,
-// lança o erro e o pedido fica para a próxima rodada (a reserva só é perdida se o pedido for apagado antes).
 export async function recuperarPedidoOrfao(id: number): Promise<boolean> {
   const pedido = await pedidoRepository.buscarPorId(id);
   if (!pedido || pedido.ativo) return false;
@@ -125,7 +117,6 @@ export async function recuperarPedidoOrfao(id: number): Promise<boolean> {
   return true;
 }
 
-// Traduz a recusa do Catálogo na resposta ao cliente.
 function erroDaReserva(resultado: Exclude<catalogo.ResultadoReserva, { tipo: 'ok' }>, nomes: Map<number, string>) {
   if (resultado.tipo === 'sem_estoque') {
     const faltas = resultado.faltas
@@ -154,7 +145,6 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
   const endereco = await identidade.buscarEndereco(idUsuario, idEndereco, authorization);
   if (!endereco) throw new ErroHttp(422, 'Endereço inválido');
 
-  // Preço e estoque vêm do Catálogo agora, não do que estava no carrinho.
   const linhas: { id_produto: number; nome: string; preco: number; quantidade: number }[] = [];
   for (const item of carrinho.itens) {
     const produto = await catalogo.buscarProduto(item.id_produto);
@@ -165,10 +155,9 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
     linhas.push({ id_produto: item.id_produto, nome: produto.nome, preco: produto.preco, quantidade: item.quantidade });
   }
 
-  const valorFrete = 0; // frete ainda não é calculado (sem regra definida no projeto)
+  const valorFrete = 0;
   const valorTotal = (linhas.reduce((soma, l) => soma + centavos(l.preco) * l.quantidade, 0) + centavos(valorFrete)) / 100;
 
-  // 1) grava o pedido INVISÍVEL (ativo=false): o Catálogo reserva por id de pedido, então ele precisa existir antes.
   const idPedido = await comTransacao((transacao) =>
     pedidoRepository.gravarInvisivel(
       {
@@ -193,7 +182,6 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
     )
   );
 
-  // 2) reserva o estoque de todos os itens de uma vez (tudo ou nada). Sem reserva, o pedido invisível é apagado.
   let reserva: catalogo.ResultadoReserva;
   try {
     reserva = await catalogo.reservarEstoque(
@@ -201,8 +189,6 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
       linhas.map((l) => ({ id_produto: l.id_produto, quantidade: l.quantidade }))
     );
   } catch (err) {
-    // Catálogo fora do ar ou resposta inesperada: a reserva pode ou não ter sido feita, então não apagamos o
-    // pedido sem antes tentar devolver. Se a devolução falhar, ele fica invisível para a recuperação de órfãos.
     try {
       await catalogo.devolverReserva(idPedido);
       await descartarPedidoSemFalhar(idPedido);
@@ -216,7 +202,6 @@ export async function criarPedido(usuario: TokenPayload, authorization: string, 
     throw erroDaReserva(reserva, new Map(linhas.map((l) => [l.id_produto, l.nome])));
   }
 
-  // 3) torna o pedido visível e encerra o carrinho na mesma transação.
   try {
     await comTransacao(async (transacao) => {
       await pedidoRepository.tornarVisivel(idPedido, transacao);
@@ -263,7 +248,6 @@ export type AutorDaMudanca = { servico: true } | { servico: false; usuario: Toke
 
 export async function buscarPedido(autor: AutorDaMudanca, id: number) {
   const pedido = await pedidoRepository.buscarDetalhe(id);
-  // Pedido invisível (ativo=false) é uma criação que ainda não terminou (ou ficou pela metade): não existe para ninguém.
   if (!pedido || pedido.ativo === false) throw new ErroHttp(404, 'Pedido não existe');
 
   if (!autor.servico) {
@@ -291,8 +275,6 @@ export async function atualizarStatus(id: number, novoStatus: StatusPedido, auto
     throw new ErroHttp(409, `Não é possível mudar o pedido de ${pedido.status} para ${novoStatus}`);
   }
 
-  // Troca condicional ao status lido: se outra chamada mudou o pedido no meio (ex.: pagamento x expiração),
-  // só uma vence, e só quem vence devolve o estoque.
   const alterado = await pedidoRepository.trocarStatus(id, pedido.status, novoStatus);
   if (!alterado) throw new ErroHttp(409, 'O status do pedido mudou, tente novamente');
   pedido.status = novoStatus;
@@ -304,8 +286,6 @@ export async function atualizarStatus(id: number, novoStatus: StatusPedido, auto
   return paraResposta(pedido);
 }
 
-// Cancela um pedido que ficou tempo demais sem pagamento. Só age se ele AINDA estiver aguardando pagamento
-// (a troca é condicional), então nunca cancela um pedido pago no meio da corrida.
 export async function expirarPedido(id: number): Promise<boolean> {
   const pedido = await pedidoRepository.buscarDetalhe(id);
   if (!pedido || pedido.status !== 'AGUARDANDO_PAGAMENTO') return false;
@@ -319,7 +299,6 @@ export async function expirarPedido(id: number): Promise<boolean> {
   return true;
 }
 
-// Ids para as rotinas agendadas (jobs/expirarPedidos.ts).
 export function idsDosPedidosVencidos(agora: Date, maximo = 50) {
   const limite = new Date(agora.getTime() - minutosParaExpirar() * 60_000);
   return pedidoRepository.buscarIdsVencidos(limite, maximo);

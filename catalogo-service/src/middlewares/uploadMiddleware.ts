@@ -5,8 +5,6 @@ import { ErroHttp } from './errorHandler';
 export const TAMANHO_MAXIMO_IMAGEM = 2 * 1024 * 1024;
 const TIPOS_ACEITOS = ['image/jpeg', 'image/png', 'image/webp'];
 
-// RNF07: limita tamanho e tipo. O tipo declarado pelo cliente é só a primeira barreira; o conteúdo é
-// conferido de novo pelos bytes iniciais em imagemService.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: TAMANHO_MAXIMO_IMAGEM, files: 1, fields: 0 },

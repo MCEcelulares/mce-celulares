@@ -1,15 +1,5 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-// Mede os SLOs de docs/qualidade.md a partir das métricas dos serviços e do log do Nginx.
-//   node scripts/medir-slos.js              # tudo desde que os containers subiram; log do Nginx das últimas 24h
-//   node scripts/medir-slos.js 2h           # outra janela para o log do Nginx (formato do `docker logs --since`)
-//   node scripts/medir-slos.js --zerar      # grava uma linha de base: as próximas medições mostram só o que vier depois
-//   node scripts/medir-slos.js --limpar     # remove a linha de base (volta a medir desde que os containers subiram)
-// Requisitos: ambiente no ar e METRICS_TOKEN (variável de ambiente ou linha METRICS_TOKEN= do .env de cada serviço).
-// Variável opcional: GATEWAY (padrão http://localhost:8080).
-// Sem linha de base, os contadores e histogramas dos serviços valem desde que o container subiu (zeram ao recriá-lo) e
-// só o log do Nginx respeita a janela. Com linha de base, os serviços e o Nginx valem desde o momento em que ela foi gravada.
-// A linha de base fica em .slo-baseline.json (ignorado pelo git). Sem tráfego suficiente, o SLO aparece como SEM DADOS.
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
@@ -30,7 +20,6 @@ function tokenDe(servico) {
   }
 }
 
-// Texto no formato Prometheus -> [{ nome, rotulos, valor }]
 function interpretar(texto) {
   const amostras = [];
   for (const linha of texto.split('\n')) {
@@ -52,7 +41,6 @@ async function coletar(servico) {
   return interpretar(await resposta.text());
 }
 
-// ---- linha de base: mede só o que aconteceu depois de um instante ----
 const chaveDe = (a) => `${a.nome}|${Object.keys(a.rotulos).sort().map((k) => `${k}=${a.rotulos[k]}`).join(',')}`;
 const acumulada = (nome) => /_(bucket|count|sum|total)$/.test(nome);
 
@@ -64,8 +52,6 @@ function lerBase() {
   }
 }
 
-// Desconta da amostra o valor que ela tinha na linha de base. Série que diminuiu (container recriado depois da linha
-// de base) recomeçou do zero, então vale inteira.
 function descontar(amostras, base) {
   if (!base) return amostras;
   return amostras.map((a) => {
@@ -77,7 +63,6 @@ function descontar(amostras, base) {
 
 const bate = (amostra, filtro) => Object.entries(filtro).every(([k, v]) => (v instanceof RegExp ? v.test(amostra.rotulos[k] ?? '') : amostra.rotulos[k] === v));
 
-// Percentil de um histograma Prometheus (interpolação linear dentro do bucket, como o histogram_quantile).
 function percentil(amostras, nome, filtro, q) {
   const buckets = new Map();
   let total = 0;
@@ -104,7 +89,6 @@ function percentil(amostras, nome, filtro, q) {
   return { valor: null, amostras: total };
 }
 
-// % de respostas que NÃO são 5xx (4xx de negócio, como 401 ou 409, não contam como indisponibilidade).
 function disponibilidade(amostras, filtro) {
   let total = 0;
   let falhas = 0;
@@ -125,8 +109,7 @@ function disponibilidadeNginx(desde) {
     const m = linha.match(/^(\S+) \S+ \S+ \[[^\]]+\] "(\S+) (\S+) [^"]*" (\d{3}) /);
     if (!m) continue;
     const [, ip, , caminho, status] = m;
-    if (ip === '127.0.0.1') continue; // healthcheck do próprio container
-    // leitura das métricas e sondas de saúde (inclusive durante reinícios) não são tráfego de cliente
+    if (ip === '127.0.0.1') continue;
     if (/\/(metrics|health(\/live)?)(\?|$)/.test(caminho)) continue;
     total++;
     if (status.startsWith('5')) falhas++;

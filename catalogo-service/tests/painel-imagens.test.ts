@@ -55,7 +55,6 @@ beforeEach(async () => {
   jest.resetAllMocks();
   await redis.flushall();
   for (const arquivo of arquivosNaPasta()) {
-    // limpa só a pasta temporária desta execução
     require('fs').unlinkSync(path.join(pasta, arquivo));
   }
 });
@@ -122,15 +121,15 @@ describe('GET /produtos/resumo (painel, RF46)', () => {
   it('exige token e a permissão dashboard:ver', async () => {
     expect((await api.get('/produtos/resumo')).status).toBe(401);
     expect((await api.get('/produtos/resumo').set(cliente)).status).toBe(403);
-    expect((await api.get('/produtos/resumo').set(admin)).status).toBe(403); // catalogo:gerenciar não basta
+    expect((await api.get('/produtos/resumo').set(admin)).status).toBe(403);
   });
 
   it('devolve as contagens do catálogo e o valor em estoque', async () => {
     produtoMock.count
-      .mockResolvedValueOnce(10) // total
-      .mockResolvedValueOnce(8) // ativos
-      .mockResolvedValueOnce(2) // sem estoque
-      .mockResolvedValueOnce(3); // destaque
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(8)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(3);
     produtoMock.findOne.mockResolvedValue({ valor: '12345.60' });
 
     const r = await api.get('/produtos/resumo').set(painel);

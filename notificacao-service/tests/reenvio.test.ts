@@ -72,7 +72,7 @@ describe('reenvio automático de notificações', () => {
   });
 
   it('reenvia uma FALHA que já esperou o tempo devido, com o conteúdo guardado, e marca como ENVIADO', async () => {
-    const falha = registro({ tentativas: 1, criado_em: minutosAtras(3) }); // espera 2 min: passou
+    const falha = registro({ tentativas: 1, criado_em: minutosAtras(3) });
     logMock.findAll.mockResolvedValue([falha]);
 
     expect(await reenviarNotificacoes(agora)).toBe(1);
@@ -107,8 +107,8 @@ describe('reenvio automático de notificações', () => {
 
   it('não reenvia antes da hora: a espera dobra a cada rodada', async () => {
     logMock.findAll.mockResolvedValue([
-      registro({ id_notificacao: 1, tentativas: 1, criado_em: minutosAtras(1) }), // espera 2 min
-      registro({ id_notificacao: 2, tentativas: 3, criado_em: minutosAtras(5) }), // espera 8 min
+      registro({ id_notificacao: 1, tentativas: 1, criado_em: minutosAtras(1) }),
+      registro({ id_notificacao: 2, tentativas: 3, criado_em: minutosAtras(5) }),
     ]);
     expect(await reenviarNotificacoes(agora)).toBe(0);
     expect(emailMock).not.toHaveBeenCalled();
@@ -134,7 +134,7 @@ describe('reenvio automático de notificações', () => {
 
     expect(await reenviarNotificacoes(agora)).toBe(1);
 
-    expect(emailMock).toHaveBeenCalledTimes(3); // as 3 tentativas da rodada
+    expect(emailMock).toHaveBeenCalledTimes(3);
     expect(falha.update).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'FALHA', erro: 'smtp fora do ar', tentativas: 2 })
     );
@@ -148,7 +148,6 @@ describe('reenvio automático de notificações', () => {
     await reenviarNotificacoes(agora);
 
     expect(ultima.update).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'FALHA', tentativas: 5 }));
-    // com 5 rodadas, tentativas < 5 já não é verdade: não volta a ser candidata
     expect(logMock.findAll.mock.calls[0][0].where.tentativas).toEqual({ [Op.lt]: 5 });
   });
 

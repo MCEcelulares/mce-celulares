@@ -42,7 +42,6 @@ beforeEach(() => {
 afterEach(() => publicar.mockRestore());
 
 describe('POST /pedidos', () => {
-  // Carrinho com 2 unidades do produto 10 e 1 do produto 11; o Catálogo tem preços diferentes dos do carrinho.
   let carrinho: ReturnType<typeof carrinhoCom>;
 
   beforeEach(() => {
@@ -68,16 +67,13 @@ describe('POST /pedidos', () => {
     expect(r.status).toBe(201);
     expect(r.body).toMatchObject({ id_pedido: 77, status: 'AGUARDANDO_PAGAMENTO', valor_total: 125 });
 
-    // o token do usuário é repassado ao Identidade
     expect(buscarUsuario).toHaveBeenCalledWith(5, `Bearer ${tokenCliente}`);
     expect(buscarEndereco).toHaveBeenCalledWith(5, 3, `Bearer ${tokenCliente}`);
 
-    // estoque reservado no Catálogo de uma vez, para o id do pedido
     expect(reservarEstoque.mock.calls).toEqual([
       [77, [{ id_produto: 10, quantidade: 2 }, { id_produto: 11, quantidade: 1 }]],
     ]);
 
-    // total usa o preço ATUAL do Catálogo (2 x 12,50 + 1 x 100,00), não o do carrinho
     expect(pedidoMock.create.mock.calls[0][0]).toMatchObject({ valor_total: 125, valor_frete: 0, status: 'AGUARDANDO_PAGAMENTO', ativo: false });
     expect(itemPedidoMock.bulkCreate.mock.calls[0][0]).toEqual([
       { id_pedido: 77, id_produto: 10, nome_produto: 'iPhone 15', quantidade: 2, preco_unitario: 12.5 },
@@ -88,7 +84,6 @@ describe('POST /pedidos', () => {
       id_pedido: 77, id_usuario: 5, nome: 'Rafael', email: 'rafael@mce.test', cpf: '52998224725',
     });
 
-    // o pedido só fica visível DEPOIS da reserva, junto com o encerramento do carrinho (mesma transação)
     expect(pedidoMock.update).toHaveBeenCalledWith({ ativo: true }, { where: { id_pedido: 77 }, transaction: { id: 'tx' } });
     expect(carrinho.update).toHaveBeenCalledWith({ ativo: false }, { transaction: { id: 'tx' } });
     expect(reservarEstoque.mock.invocationCallOrder[0]).toBeLessThan(pedidoMock.update.mock.invocationCallOrder[0]);
@@ -116,7 +111,7 @@ describe('POST /pedidos', () => {
     });
     expect(evento.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(new Date(evento.ocorridoEm).toString()).not.toBe('Invalid Date');
-    expect(JSON.stringify(evento)).not.toMatch(/52998224725|45999990000/); // sem CPF nem telefone
+    expect(JSON.stringify(evento)).not.toMatch(/52998224725|45999990000/);
   });
 
   it('registra em log o evento publicado, com o id do evento e o número de receptores', async () => {

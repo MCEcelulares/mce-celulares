@@ -27,16 +27,12 @@ export function paraResposta(pagamento: Pagamento) {
   };
 }
 
-// Confirma o pagamento: avisa o Vendas (fonte da verdade do status), marca como APROVADO e publica o evento.
-// Pode ser chamada de novo (webhook repetido): o Vendas aceita repetir PAGO e só a primeira chamada
-// consegue "reivindicar" a mudança para APROVADO, então o evento sai uma única vez.
 async function confirmar(pagamento: Pagamento, idGateway: string | null = null) {
   const pedido = await vendas.atualizarStatus(pagamento.id_pedido, 'PAGO');
 
   const reivindicado = await pagamentoRepository.reivindicarAprovacao(pagamento.id_pagamento, idGateway);
   if (!reivindicado) return;
 
-  // O banco já foi atualizado acima; espelha no objeto para a resposta desta chamada não sair com a data vazia.
   pagamento.status = 'APROVADO';
   pagamento.data_pagamento = new Date();
   pagamento.id_pagamento_gateway = idGateway;
@@ -54,7 +50,6 @@ async function confirmar(pagamento: Pagamento, idGateway: string | null = null) 
   });
 }
 
-// Visão do operador: inclui o id do pagamento no gateway (para reembolsar). Nunca expõe o link de pagamento.
 function paraRespostaOperador(pagamento: Pagamento) {
   return {
     id_pagamento: pagamento.id_pagamento,
@@ -67,7 +62,6 @@ function paraRespostaOperador(pagamento: Pagamento) {
   };
 }
 
-// A rota exige a permissão pedidos:listar-todos (ver pagamentoRoutes).
 export async function listarPagamentos(filtros: FiltrosPagamento) {
   const { registros, total } = await pagamentoRepository.listar(filtros);
   return { dados: registros.map(paraRespostaOperador), pagina: filtros.pagina, limite: filtros.limite, total };
@@ -88,7 +82,6 @@ export async function registrarPagamento(usuario: TokenPayload, dados: Registrar
 
   let pagamento = await pagamentoRepository.buscarPorPedido(dados.idPedido);
   if (pagamento?.status === 'APROVADO') throw new ErroHttp(409, 'Este pedido já foi pago');
-  // Já existe um link de pagamento em aberto: devolve o mesmo, em vez de criar outro e arriscar pagar duas vezes.
   if (pagamento?.status === 'PENDENTE' && pagamento.url_pagamento) return paraResposta(pagamento);
 
   const gateway = obterGateway();
@@ -155,7 +148,6 @@ function ignorar(motivo: string, extra: object = {}) {
 
 const FALHAS_DO_GATEWAY = ['rejected', 'cancelled'];
 
-// Nunca sobrescreve um pagamento já APROVADO (a troca é condicional).
 async function marcarParaReembolso(pagamento: Pagamento, idGateway: string | null) {
   const alterado = await pagamentoRepository.marcarParaReembolso(pagamento.id_pagamento, idGateway);
   if (alterado) {
@@ -164,8 +156,6 @@ async function marcarParaReembolso(pagamento: Pagamento, idGateway: string | nul
   }
 }
 
-// Regra única de decisão, usada pelo webhook e pela sincronização: dado o que o gateway diz sobre um pagamento,
-// confirma, recusa ou não faz nada.
 async function aplicarResultado(pagamento: Pagamento, info: PagamentoExterno) {
   const idPedido = pagamento.id_pedido;
 
@@ -178,8 +168,6 @@ async function aplicarResultado(pagamento: Pagamento, info: PagamentoExterno) {
     try {
       await confirmar(pagamento, info.id || null);
     } catch (err) {
-      // O gateway aprovou, mas o Vendas não aceita (ex.: pedido cancelado): repetir não adianta. O pagamento fica
-      // marcado como REEMBOLSAR, com o id do gateway, para o operador devolver o dinheiro (o reembolso é manual).
       if (err instanceof ErroHttp && (err.status === 404 || err.status === 409)) {
         await marcarParaReembolso(pagamento, info.id || null);
         registrarEvento('pagamento_pedido_nao_pagavel');
@@ -197,7 +185,6 @@ async function aplicarResultado(pagamento: Pagamento, info: PagamentoExterno) {
   }
 }
 
-// Chamado pelo webhook. Nada do corpo do webhook é confiável: o pagamento é sempre consultado no gateway.
 export async function processarNotificacao(idPagamentoExterno: string) {
   const info = await obterGateway().consultarPagamento(idPagamentoExterno);
   if (!info || !info.externalReference) return ignorar('pagamento desconhecido no gateway', { idPagamentoExterno });
@@ -211,8 +198,6 @@ export async function processarNotificacao(idPagamentoExterno: string) {
   await aplicarResultado(pagamento, info);
 }
 
-// Plano B do webhook (perdido, atrasado ou sem URL pública, como em ambiente local): o dono do pedido (ou quem
-// tem pedidos:listar-todos) pede para consultar o gateway agora. Usa a mesma regra de decisão do webhook.
 export async function sincronizarPagamento(usuario: TokenPayload, idPedido: number) {
   const pagamento = await pagamentoRepository.buscarPorPedido(idPedido);
   if (!pagamento) throw new ErroHttp(404, 'Nenhum pagamento para esse pedido');

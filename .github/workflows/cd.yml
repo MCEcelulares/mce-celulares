@@ -1,9 +1,5 @@
 name: CD
 
-# Publica as imagens dos 5 serviços no GitHub Container Registry a cada tag de versão (v1.0.0, v1.1.0...)
-# e, se o servidor estiver configurado, faz o deploy por SSH com verificação de saúde e rollback automático.
-# Estratégia e limites: docs/entrega.md
-
 on:
   push:
     tags: ['v*']
@@ -13,8 +9,6 @@ permissions:
   packages: write
 
 jobs:
-  # Só publica se o CI da mesma versão passaria: tipagem dos 5 serviços e os testes dos que não precisam de banco
-  # (Identidade e Catálogo usam MySQL nos testes, que ficam por conta do CI).
   verificar:
     runs-on: ubuntu-latest
     strategy:
@@ -58,7 +52,6 @@ jobs:
           docker build -t "${IMAGEM}:${GITHUB_REF_NAME}" -t "${IMAGEM}:${GITHUB_SHA::12}" "./${{ matrix.servico }}"
           docker push --all-tags "${IMAGEM}"
 
-  # Roda só se as variáveis do repositório DEPLOY_HOST, DEPLOY_USER e DEPLOY_PATH e o segredo DEPLOY_SSH_KEY existirem.
   deploy:
     needs: publicar-imagens
     if: ${{ vars.DEPLOY_HOST != '' }}

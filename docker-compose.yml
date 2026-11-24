@@ -1,8 +1,5 @@
-# Nome fixo do projeto: a rede (mce-celulares_backend) e os volumes não dependem do nome da pasta.
 name: mce-celulares
 
-# Padrão: só o Nginx publica porta no host. Bancos e Redis são acessados por `docker exec` (veja o README).
-# Única exceção, só em desenvolvimento (profile "dev"): a caixa de e-mails do Mailpit.
 networks:
     backend:
         driver: bridge
@@ -237,8 +234,6 @@ services:
       networks:
         - backend
 
-    # Caixa de e-mails de desenvolvimento (nenhum e-mail sai de verdade): docker compose --profile dev up -d
-    # No notificacao-service/.env: SMTP_HOST=mailpit e SMTP_PORT=1025. Caixa de entrada: http://127.0.0.1:8025
     mailpit:
       image: axllent/mailpit
       container_name: mailpit

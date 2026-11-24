@@ -1,14 +1,5 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-// Baixa uma foto para cada produto do catálogo de demonstração e envia pela API (como o painel faz).
-//
-//   node scripts/popular-catalogo.js   # antes: cria os produtos
-//   node scripts/popular-imagens.js    # depois: coloca as fotos
-//
-// As fotos vêm de capas e artigos da Wikipedia e do Wikimedia Commons (lista em scripts/imagens-produtos.json, com a origem de cada
-// uma). Uso apenas para demonstração acadêmica, sem fins comerciais. Alguns modelos não têm foto própria no Commons e usam uma
-// foto de um modelo parecido da mesma linha; produtos sem entrada no mapa ficam sem foto (envie pelo painel administrativo).
-// Pode repetir: quem já tem imagem é pulado (use --forcar para trocar todas).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -81,7 +72,7 @@ async function baixar(url) {
       if (!r.ok) throw new Error(`envio HTTP ${r.status} ${(await r.json().catch(() => ({}))).erro ?? ''}`.trim());
       enviadas++;
       console.log(`  ✔ ${nome}`);
-      await pausa(400); // educado com o servidor das fotos
+      await pausa(400);
     } catch (e) {
       falhas.push(`${nome}: ${e.message}`);
     }

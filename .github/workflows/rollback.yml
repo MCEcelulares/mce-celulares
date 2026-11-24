@@ -1,8 +1,5 @@
 name: Rollback
 
-# Volta o servidor para uma versão já publicada (ou, sem informar, para a versão anterior ao último deploy).
-# Executar em: Actions > Rollback > Run workflow.
-
 on:
   workflow_dispatch:
     inputs:

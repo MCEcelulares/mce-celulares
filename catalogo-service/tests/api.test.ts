@@ -262,9 +262,9 @@ describe('produtos (RF10-RF14, RF17, RF21)', () => {
     expect((await lista('precoMin=1500&precoMax=2500')).dados).toHaveLength(1);
     expect((await lista('disponivel=true')).dados).toHaveLength(2);
     expect((await lista('busca=galaxy')).dados).toHaveLength(2);
-    expect((await lista('busca=galaxy 13')).dados).toHaveLength(1); // "13" tem só 2 letras: LIKE funciona onde FULLTEXT falharia
+    expect((await lista('busca=galaxy 13')).dados).toHaveLength(1);
     expect((await lista('busca=50%')).dados).toHaveLength(1);
-    expect((await lista('busca=%')).dados).toHaveLength(1); // curinga é literal, não "tudo"
+    expect((await lista('busca=%')).dados).toHaveLength(1);
     expect((await lista(`busca=${encodeURIComponent("' OR 1=1 --")}`)).dados).toHaveLength(0);
     expect((await lista(`marca=${idMarca2}`)).dados).toHaveLength(0);
 
@@ -372,7 +372,6 @@ describe('cache-aside com Redis (rubrica)', () => {
     const chaves = await redis.keys('catalogo:*');
     expect(chaves.some((k) => k.endsWith(`produtos:${p.id_produto}`))).toBe(true);
 
-    // altera direto no banco: se vier o valor antigo, veio do cache
     await Produto.update({ preco: 999 }, { where: { id_produto: p.id_produto } });
     expect((await api.get(`/produtos/${p.id_produto}`)).body.preco).toBe(100);
 

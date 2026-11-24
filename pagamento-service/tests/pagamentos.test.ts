@@ -68,7 +68,6 @@ describe('POST /pagamentos', () => {
       );
       expect(atualizarStatus).toHaveBeenCalledWith(77, 'PAGO');
       expect(pagamentoMock.update.mock.calls[0][0]).toMatchObject({ status: 'APROVADO' });
-      // só quem muda de não-APROVADO para APROVADO publica o evento (evita duplicata em webhooks repetidos)
       expect(pagamentoMock.update.mock.calls[0][1].where).toEqual({ id_pagamento: 1, status: { [Op.ne]: 'APROVADO' } });
 
       const [canal, mensagem] = publicar.mock.calls[0];
@@ -86,7 +85,7 @@ describe('POST /pagamentos', () => {
         },
       });
       expect(evento.id).toMatch(/^[0-9a-f-]{36}$/);
-      expect(JSON.stringify(evento)).not.toMatch(/45999990000/); // sem telefone
+      expect(JSON.stringify(evento)).not.toMatch(/45999990000/);
     });
 
     it('inclui no envelope o id de correlação da requisição que originou o evento', async () => {
@@ -375,10 +374,10 @@ describe('POST /pagamentos/webhook (Mercado Pago)', () => {
   });
 
   it('repetição do webhook não publica o evento de novo', async () => {
-    pagamentoMock.update.mockResolvedValue([0]); // já estava APROVADO
+    pagamentoMock.update.mockResolvedValue([0]);
     const r = await api.post('/pagamentos/webhook').send({ type: 'payment', data: { id: '123' } });
     expect(r.status).toBe(200);
-    expect(atualizarStatus).toHaveBeenCalledTimes(1); // o Vendas aceita repetir PAGO
+    expect(atualizarStatus).toHaveBeenCalledTimes(1);
     expect(publicar).not.toHaveBeenCalled();
   });
 

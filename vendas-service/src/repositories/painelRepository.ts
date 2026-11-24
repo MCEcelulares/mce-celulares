@@ -1,7 +1,6 @@
 import { col, fn, literal, Op } from 'sequelize';
 import { ItemPedido, Pedido } from '../models';
 
-// Pedidos que já geraram receita (pagos, em entrega ou entregues). Pedido invisível (ativo=false) nunca conta.
 const STATUS_COM_RECEITA = ['PAGO', 'ENVIADO', 'ENTREGUE'];
 
 const ativos = { ativo: true };

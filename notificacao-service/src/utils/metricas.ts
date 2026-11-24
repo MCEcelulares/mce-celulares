@@ -47,8 +47,6 @@ export function registrarEntrega(tipo: string, ocorridoEm: string) {
 function rotulo(req: Request): string {
   if (!req.route) return 'nao_encontrada';
   const rota = String(req.route.path);
-  // Quando o erro passa pelo errorHandler, o Express já restaurou req.baseUrl ('' em vez de '/pedidos'), e o rótulo
-  // ficaria só com o trecho da rota ('/'). Nesse caso o prefixo é reconstruído a partir da URL original.
   let prefixo = req.baseUrl;
   if (!prefixo) {
     const partes = req.originalUrl.split('?')[0].split('/').filter(Boolean);

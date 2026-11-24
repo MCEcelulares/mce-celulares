@@ -32,11 +32,8 @@ const paraPagamentoExterno = (p: RespostaPagamento): PagamentoExterno => ({
   valor: Number(p.transaction_amount),
 });
 
-// O Mercado Pago documenta as datas com deslocamento (ex.: -04:00); usamos +00:00 em vez de "Z".
 const paraDataMercadoPago = (data: Date | string) => new Date(data).toISOString().replace('Z', '+00:00');
 
-// O Mercado Pago só aceita `auto_return` com URLs públicas em https; com http ou localhost responde 400
-// (invalid_auto_return) e o pagamento nem é criado. Sem ele, o cliente volta à loja pelo botão "Voltar ao site".
 const urlPublicaHttps = (url: string) => {
   try {
     const { protocol, hostname } = new URL(url);
@@ -47,10 +44,6 @@ const urlPublicaHttps = (url: string) => {
   }
 };
 
-// Checkout Pro: criamos uma "preferência" com os itens do pedido (RF42) e o cliente paga na página do
-// Mercado Pago. A confirmação chega pelo webhook, que consulta o pagamento na API do MP (nunca confiamos
-// no conteúdo do webhook), ou por uma consulta direta (buscarPagamentosPorReferencia).
-// Para testar, use as credenciais de teste do vendedor e um comprador de teste (ver o README do serviço).
 export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
   const headers = { Authorization: `Bearer ${accessToken}` };
 
@@ -71,13 +64,11 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
 
       const urlPublica = process.env.PUBLIC_BASE_URL;
       const urlLoja = process.env.FRONTEND_URL;
-      // Tela de retorno do front-end: ela confirma o pagamento no back-end (sincronizar) antes de mostrar o resultado.
       const urlRetorno = urlLoja ? `${urlLoja.replace(/\/$/, '')}/checkout/retorno/${dados.idPedido}` : undefined;
       const preferencia = {
         items: itens,
         payer: { email: dados.emailCliente },
         external_reference: String(dados.idPedido),
-        // O link para de aceitar pagamento quando o Vendas cancelaria o pedido por falta de pagamento.
         ...(dados.expiraEm && {
           expires: true,
           expiration_date_from: paraDataMercadoPago(new Date()),
@@ -94,7 +85,7 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
         method: 'POST',
         headers,
         body: preferencia,
-        propagarCorrelacao: false, // serviço externo: não recebe o id de correlação interno
+        propagarCorrelacao: false,
       });
       if ((r.status !== 201 && r.status !== 200) || !r.corpo?.id) {
         logger.warn(

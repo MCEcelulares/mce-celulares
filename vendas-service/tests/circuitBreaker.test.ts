@@ -104,7 +104,7 @@ describe('circuit breaker', () => {
 
     const teste = chamar('Teste', 'http://x.test/a');
     expect(estadoDoCircuito('Teste')).toBe('meio-aberto');
-    await falhar(); // recusada na hora: não chega ao fetch
+    await falhar();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     liberar(resposta(200));
@@ -119,11 +119,11 @@ describe('circuit breaker', () => {
     await falhar();
 
     agora += 10_000;
-    await falhar(); // a chamada de teste falha
+    await falhar();
     expect(estadoDoCircuito('Teste')).toBe('aberto');
 
     fetchMock.mockClear();
-    agora += 5_000; // ainda dentro da nova espera
+    agora += 5_000;
     await falhar();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -152,8 +152,8 @@ describe('retry com backoff', () => {
 
     expect(erro).toBeInstanceOf(ErroHttp);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(gastoMs).toBeGreaterThanOrEqual(110); // 40ms + 80ms
-    expect(estadoDoCircuito('Teste')).toBe('fechado'); // 1 falha < 3
+    expect(gastoMs).toBeGreaterThanOrEqual(110);
+    expect(estadoDoCircuito('Teste')).toBe('fechado');
   });
 
   it('para de tentar assim que uma tentativa dá certo', async () => {

@@ -83,8 +83,8 @@ describe('expiração de pedidos não pagos', () => {
   it('não cancela nem devolve a reserva se o pedido foi pago no meio da rotina', async () => {
     pedidoMock.findAll.mockResolvedValue([{ id_pedido: 77 }, { id_pedido: 78 }]);
     pedidoMock.findByPk
-      .mockResolvedValueOnce(pedidoCom({ status: 'PAGO' })) // já pago quando foi relido
-      .mockResolvedValueOnce(pedidoCom({ id_pedido: 78 })); // pago entre a leitura e a troca
+      .mockResolvedValueOnce(pedidoCom({ status: 'PAGO' }))
+      .mockResolvedValueOnce(pedidoCom({ id_pedido: 78 }));
     pedidoMock.update.mockResolvedValue([0]);
 
     expect(await expirarPedidosVencidos(agora)).toBe(0);
@@ -231,7 +231,6 @@ describe('painel administrativo (RF18, RF46, RF47)', () => {
         { dia: '2026-10-28', receita: 99.9, pedidos: 1 },
       ],
     });
-    // a receita só conta pedidos pagos, enviados ou entregues
     const filtroReceita = pedidoMock.sum.mock.calls[0][1].where;
     expect(filtroReceita.status[Op.in]).toEqual(['PAGO', 'ENVIADO', 'ENTREGUE']);
   });

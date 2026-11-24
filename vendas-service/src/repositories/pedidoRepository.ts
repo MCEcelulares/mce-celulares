@@ -47,7 +47,6 @@ export interface FiltroListagem {
   pagina: number;
 }
 
-// Grava o pedido INVISÍVEL (ativo=false) com itens, endereço e dados do cliente. Devolve o id do pedido.
 export async function gravarInvisivel(dados: NovoPedido, transacao: Transacao): Promise<number> {
   const pedido = await Pedido.create(
     { valor_total: dados.valor_total, valor_frete: dados.valor_frete, status: 'AGUARDANDO_PAGAMENTO', ativo: false },
@@ -94,7 +93,6 @@ export function tornarVisivel(idPedido: number, transacao: Transacao) {
   return Pedido.update({ ativo: true }, { where: { id_pedido: idPedido }, transaction: transacao });
 }
 
-// Só apaga pedido invisível: um pedido já visível nunca é removido por aqui.
 export async function descartarInvisivel(idPedido: number, transacao: Transacao) {
   await ItemPedido.destroy({ where: { id_pedido: idPedido }, transaction: transacao });
   await EnderecoPedido.destroy({ where: { id_pedido: idPedido }, transaction: transacao });
@@ -129,7 +127,6 @@ export async function listar(filtro: FiltroListagem) {
   return { registros: rows, total: count };
 }
 
-// Troca condicional ao status lido: se outra chamada mudou o pedido no meio, só uma vence.
 export async function trocarStatus(id: number, de: StatusPedido, para: StatusPedido) {
   const [alterados] = await Pedido.update({ status: para }, { where: { id_pedido: id, status: de } });
   return alterados > 0;

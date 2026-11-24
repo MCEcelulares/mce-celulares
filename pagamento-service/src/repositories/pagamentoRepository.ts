@@ -55,7 +55,6 @@ export async function atualizar(pagamento: Pagamento, campos: CamposPagamento) {
   }
 }
 
-// Troca condicional: só a primeira chamada consegue passar para APROVADO, por isso devolve se alterou algo.
 export async function reivindicarAprovacao(idPagamento: number, idGateway: string | null) {
   const [alterados] = await Pagamento.update(
     { status: 'APROVADO', data_pagamento: new Date(), id_pagamento_gateway: idGateway },
@@ -64,7 +63,6 @@ export async function reivindicarAprovacao(idPagamento: number, idGateway: strin
   return alterados > 0;
 }
 
-// Nunca sobrescreve um pagamento já APROVADO.
 export async function marcarParaReembolso(idPagamento: number, idGateway: string | null) {
   const [alterados] = await Pagamento.update(
     { status: 'REEMBOLSAR', id_pagamento_gateway: idGateway },

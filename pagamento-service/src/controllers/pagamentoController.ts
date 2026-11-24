@@ -34,8 +34,6 @@ export async function sincronizar(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-// Webhook do Mercado Pago: POST com { type: "payment", data: { id } } (o id também pode vir em ?data.id=).
-// Responde 200 quando processou ou não precisa processar; qualquer erro vira 5xx para o Mercado Pago tentar de novo.
 export async function webhook(req: Request, res: Response, next: NextFunction) {
   try {
     const tipo = req.body?.type ?? req.query.type;
