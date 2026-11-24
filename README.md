@@ -109,8 +109,17 @@ Com o ambiente no ar, o Swagger UI com os contratos dos 5 serviços fica em `htt
 Cada tag `v*` publica as imagens no GitHub Container Registry (`cd.yml`). No servidor: `REGISTRY_OWNER=<dono> ./scripts/deploy.sh v1.0.0` aplica a versão, confere a saúde dos 5 serviços e volta sozinho para a anterior se algo falhar; `./scripts/rollback.sh [tag]` volta manualmente. Detalhes e limites (migrations!) em [ADR-014](documentacao-arquiteturial/ADRs/ADR-014-cd-com-rollback-por-tag.md). Em incidente, siga o [runbook](operacao/runbook-incidentes.md).
 
 ## Mercado Pago
-O pagamento real usa o Checkout Pro. O roteiro de teste (contas, cartões, webhook) está em
-[pagamento-service/README.md](pagamento-service/README.md). Sem token configurado, `POST /pagamentos` responde 503 de propósito.
+O pagamento real usa o Checkout Pro e foi **validado no sandbox** (vendedor e comprador de teste). O roteiro (contas, cartões,
+webhook, resultado e erros comuns) está em [pagamento-service/README.md](pagamento-service/README.md). Sem token configurado,
+`POST /pagamentos` responde 503 de propósito.
+
+Este projeto é uma versão de **desenvolvimento e testes**, sem hospedagem. Em `localhost` o Mercado Pago **não devolve o cliente à
+loja** (descarta `back_urls` não públicas) e **não consegue enviar o webhook**: depois de pagar, o cliente volta pela loja e usa
+**Já paguei** (ou `POST /pagamento/pagamentos/{idPedido}/sincronizar`), que confirma direto no Mercado Pago. No front, "Pagar agora"
+abre o Mercado Pago em uma nova aba e a aba da loja vai para o pedido. Detalhes no [ADR-011](documentacao-arquiteturial/ADRs/ADR-011-pagamento-mercado-pago-webhook.md).
+
+Para rodar a suíte ponta a ponta (`e2e/`) o gateway precisa estar `simulado`; para o teste manual com o Mercado Pago, `mercadopago`.
+Troque em `pagamento-service/.env` e recrie o container (`docker compose up -d --force-recreate pagamento`).
 
 ## Indo para produção — o que mudar
 - `GATEWAY_PAGAMENTO=mercadopago` com o token de **produção**, `PUBLIC_BASE_URL` (webhook) e `FRONTEND_URL` reais.
@@ -125,6 +134,8 @@ O pagamento real usa o Checkout Pro. O roteiro de teste (contas, cartões, webho
 - **429 no login do Identidade:** o limite é 10 logins por 15 min por IP. Em desenvolvimento, suba `RATE_LIMIT_LOGIN_MAX` no `identidade-service/.env`.
 - **`npm ci` falha no build do Docker ("Missing ... from lock file"):** o `package-lock.json` foi gerado por outra versão do npm. Gere-o com o npm do container: `docker run --rm -v "$PWD:/app" node:20-alpine sh -c "mkdir /tmp/n && cp /app/package.json /tmp/n/ && cd /tmp/n && npm install --package-lock-only --ignore-scripts && cp package-lock.json /app/"` (dentro da pasta do serviço).
 - **Serviço reinicia em loop:** `docker compose logs <serviço>`; costuma ser `.env` faltando ou senha do banco diferente da do `.env` da raiz.
+- **Mercado Pago: "Uma das partes com as quais você está tentando efetuar o pagamento é de teste":** vendedor e comprador têm de ser os dois contas de teste. Pague numa janela anônima com o **comprador de teste**, nunca com a conta pessoal.
+- **Pagou no Mercado Pago e o pedido continua "Aguardando pagamento":** sem webhook (`localhost`) é o esperado. Volte à loja e clique em **Já paguei**.
 - **Mudou um `.env`:** `docker compose up -d --force-recreate <serviço>` (o `restart` não relê o arquivo).
 
 ## Mapa do repositório
