@@ -100,17 +100,17 @@ node e2e/executar.js
 Antes, suba os limites de login e cadastro no `identidade-service/.env` (instruções em [e2e/README.md](e2e/README.md)). O [CI](.github/workflows/ci.yml) roda tipagem e testes dos 5 serviços (com um MySQL próprio), a validação dos contratos contra as rotas, a regra de camadas (`python3 scripts/verificar-camadas.py`), `nginx -t` e o build das imagens.
 
 ## Dados de demonstração (ambiente de desenvolvimento)
-Com o ambiente no ar e o administrador criado pelo seed do Identidade, popule o catálogo (6 categorias, 19 marcas e 37 produtos realistas):
+Com o ambiente no ar e o administrador criado pelo seed do Identidade, popule o catálogo (8 categorias, 20 marcas e 49 produtos realistas):
 ```bash
 node scripts/popular-catalogo.js     # pode repetir: o que já existe é pulado
 node scripts/popular-imagens.js      # baixa e envia a foto de cada produto (pode repetir; --forcar troca todas)
 ```
-Categorias: Celulares, Notebooks, Consoles, Fones, Periféricos e Jogos. Preços e especificações são aproximados, para demonstração. Um produto
+Categorias: Celulares, Tablets, Notebooks, Smartwatches, Consoles, Fones, Periféricos e Jogos. Preços e especificações são aproximados, para demonstração. Um produto
 (Xbox Series X) fica sem estoque de propósito, para mostrar o estado "Indisponível".
 
 As fotos vêm de capas e artigos da Wikipedia e do Wikimedia Commons (`scripts/imagens-produtos.json` guarda a origem de cada uma), só para
-demonstração acadêmica, sem fins comerciais. **35 dos 37 produtos têm foto; algumas são de um modelo parecido da mesma linha** (ex.: o fone
-Sony WH-1000XM5 usa a foto do XM3, o mouse G203 usa a de um G502) porque o Commons não tem foto própria do modelo exato. **JBL Tune 520BT e HyperX
+demonstração acadêmica, sem fins comerciais. **47 dos 49 produtos têm foto; algumas são de um modelo parecido da mesma linha** (ex.: o fone
+Sony WH-1000XM5 usa a foto do XM3, o mouse G203 usa a de um G502, a Smart Band 9 usa a da Band 8) porque o Commons não tem foto própria do modelo exato. **JBL Tune 520BT e HyperX
 Cloud II ficam sem foto**; envie pelo painel administrativo do front, na edição do produto, ou acrescente a URL em `imagens-produtos.json`.
 
 Para **zerar** os dados antes de uma demonstração (**apaga usuários, pedidos, pagamentos, notificações e o catálogo; mantém a estrutura, os
