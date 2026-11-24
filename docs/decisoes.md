@@ -2,7 +2,11 @@
 
 Cada decisão importante está registrada com o contexto, o que foi escolhido, o custo e o que foi descartado.
 
+Os ADRs completos ficam em [`documentacao-arquiteturial/ADRs/`](../documentacao-arquiteturial/ADRs/). **Um ADR nunca é apagado:** quando uma decisão muda, um ADR mais recente a substitui, e o antigo continua como histórico. Abaixo, o resumo dos principais e o índice de todos.
+
 ## ADR-001: Microsserviços reais, não monólito
+
+[ADR completo](../documentacao-arquiteturial/ADRs/ADR-001-microsservicos-reais.md)
 
 - **Contexto:** a disciplina exige microsserviços de verdade, e a ideia inicial era um monólito modular.
 - **Decisão:** 5 serviços independentes (Identidade, Catálogo, Vendas, Pagamento, Notificação), cada um com banco e deploy próprios.
@@ -11,12 +15,16 @@ Cada decisão importante está registrada com o contexto, o que foi escolhido, o
 
 ## ADR-002: Um banco por serviço, sem chave estrangeira entre serviços
 
+[ADR completo](../documentacao-arquiteturial/ADRs/ADR-002-banco-por-servico.md)
+
 - **Decisão:** cada serviço tem o seu MySQL. Referências entre serviços viram um número simples, validado por HTTP na hora de gravar, ou uma cópia dos dados no momento da compra.
 - **Ganho:** autonomia de cada serviço, e o histórico de pedidos não muda se o produto ou o usuário mudar.
 - **Custo:** o banco não garante a integridade entre serviços, e aceita-se consistência eventual.
 - **Descartado:** um banco único para todos.
 
 ## ADR-003: HTTP só onde a resposta é necessária; o resto é assíncrono
+
+[ADR completo](../documentacao-arquiteturial/ADRs/ADR-003-comunicacao-sincrona-assincrona.md)
 
 - **Decisão:**
   - **HTTP:** quando o fluxo precisa da resposta na hora (Vendas consulta Identidade e Catálogo; Pagamento consulta o Vendas e o Mercado Pago).
@@ -27,12 +35,16 @@ Cada decisão importante está registrada com o contexto, o que foi escolhido, o
 
 ## ADR-016: MySQL 8.0 como banco
 
+[ADR completo](../documentacao-arquiteturial/ADRs/ADR-016-mysql-como-banco-relacional.md)
+
 - **Decisão:** MySQL em todos os serviços, uma instância por serviço, acessado pelo Sequelize com migrations.
 - **Por quê:** pedidos, itens e estoque precisam de transações (ACID) e o esquema do e-commerce é estável. Uma só tecnologia reduz o custo de operar.
 - **Custo:** escrita escala na vertical, e a busca do catálogo usa `LIKE` (o cache do Redis ameniza).
 - **Descartado:** PostgreSQL (nenhum requisito usa o que ele tem a mais), MongoDB (o modelo é relacional e precisa de transações) e Redis como banco principal (é volátil).
 
 ## ADR-017: Cache-aside com Redis no Catálogo
+
+[ADR completo](../documentacao-arquiteturial/ADRs/ADR-017-cache-aside-redis-no-catalogo.md)
 
 - **Decisão:** o Catálogo consulta o Redis primeiro. Se não achar (*miss*), lê do MySQL e guarda no Redis com **TTL de 300 s**. O que entra no cache: listagens, detalhe de produto, destaques, categorias e marcas.
 - **Invalidação:** toda escrita no catálogo incrementa um número de versão (`INCR catalogo:versao`) que faz parte da chave do cache. As chaves antigas deixam de ser lidas e expiram sozinhas. Assim o dado nunca fica velho depois de uma edição.
@@ -41,6 +53,8 @@ Cada decisão importante está registrada com o contexto, o que foi escolhido, o
 - **Descartado:** sem cache, só TTL (preço antigo por até 5 min), `DEL` chave a chave e cache em memória do processo.
 
 ## ADR-018: Nginx como único ponto de entrada, com Docker Compose
+
+[ADR completo](../documentacao-arquiteturial/ADRs/ADR-018-gateway-nginx.md)
 
 - **Decisão:** o Nginx é a única porta exposta (8080) e roteia por prefixo (`/vendas/`, `/catalogo/`...) para os serviços. Serviços, bancos e Redis ficam só na rede interna. As rotas internas do Catálogo (`/catalogo/interno/`) são bloqueadas no gateway. O Compose usa `healthcheck` e `depends_on: service_healthy` para subir na ordem certa.
 - **Ganho:** um só endereço e uma só superfície exposta; um serviço parado derruba só a própria rota.
@@ -51,15 +65,15 @@ Cada decisão importante está registrada com o contexto, o que foi escolhido, o
 
 | ADR | Decisão |
 |---|---|
-| 004 | TypeScript no back-end e no front-end |
-| 005 | O JWT é assinado com RS256: só o Identidade tem a chave privada, os outros só verificam |
-| 006 | As permissões do usuário vão dentro do JWT |
-| 007 | O refresh token fica no Redis e é de uso único |
-| 008 | Os eventos seguem um envelope único e versionado (`id`, `tipo`, `versao`, `origem`, `ocorridoEm`, `dados`) |
-| 009 | O Vendas reserva o estoque no Catálogo por HTTP, "tudo ou nada" e sem duplicar; o pedido só fica visível depois da reserva |
-| 010 | Chamadas entre serviços sem usuário usam um token de serviço |
-| 011 | Pagamento pelo Checkout Pro do Mercado Pago. O webhook não é confiável: o serviço consulta o Mercado Pago e só confirma se estiver aprovado e com o valor igual |
-| 012 | Cada serviço expõe as próprias métricas em `/metrics` |
-| 013 | As imagens de produto ficam num volume em disco e são servidas pelo Catálogo |
-| 014 | Deploy com imagens versionadas por tag e rollback por tag, sem blue/green (ver [entrega.md](entrega.md)) |
-| 015 | Só os repositories falam com o banco; um script confere isso no CI |
+| [ADR-004](../documentacao-arquiteturial/ADRs/ADR-004-typescript-back-e-front.md) | TypeScript no back-end e no front-end |
+| [ADR-005](../documentacao-arquiteturial/ADRs/ADR-005-rs256-assinatura-jwt.md) | O JWT é assinado com RS256: só o Identidade tem a chave privada, os outros só verificam |
+| [ADR-006](../documentacao-arquiteturial/ADRs/ADR-006-permissoes-no-jwt.md) | As permissões do usuário vão dentro do JWT |
+| [ADR-007](../documentacao-arquiteturial/ADRs/ADR-007-refresh-token-no-redis.md) | O refresh token fica no Redis e é de uso único |
+| [ADR-008](../documentacao-arquiteturial/ADRs/ADR-008-contrato-eventos-assincronos.md) | Os eventos seguem um envelope único e versionado (`id`, `tipo`, `versao`, `origem`, `ocorridoEm`, `dados`) |
+| [ADR-009](../documentacao-arquiteturial/ADRs/ADR-009-vendas-catalogo-estoque-http.md) | O Vendas reserva o estoque no Catálogo por HTTP, "tudo ou nada" e sem duplicar; o pedido só fica visível depois da reserva |
+| [ADR-010](../documentacao-arquiteturial/ADRs/ADR-010-token-de-servico-entre-servicos.md) | Chamadas entre serviços sem usuário usam um token de serviço |
+| [ADR-011](../documentacao-arquiteturial/ADRs/ADR-011-pagamento-mercado-pago-webhook.md) | Pagamento pelo Checkout Pro do Mercado Pago. O webhook não é confiável: o serviço consulta o Mercado Pago e só confirma se estiver aprovado e com o valor igual |
+| [ADR-012](../documentacao-arquiteturial/ADRs/ADR-012-painel-metricas-por-servico.md) | Cada serviço expõe as próprias métricas em `/metrics` |
+| [ADR-013](../documentacao-arquiteturial/ADRs/ADR-013-imagens-de-produto-em-disco.md) | As imagens de produto ficam num volume em disco e são servidas pelo Catálogo |
+| [ADR-014](../documentacao-arquiteturial/ADRs/ADR-014-cd-com-rollback-por-tag.md) | Deploy com imagens versionadas por tag e rollback por tag, sem blue/green (ver [entrega.md](entrega.md)) |
+| [ADR-015](../documentacao-arquiteturial/ADRs/ADR-015-camada-repository.md) | Só os repositories falam com o banco; um script confere isso no CI |
