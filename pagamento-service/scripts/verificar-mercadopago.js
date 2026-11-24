@@ -69,5 +69,5 @@ async function chamar(caminho, opcoes = {}) {
   console.log('  - GATEWAY_PAGAMENTO=mercadopago no .env e reinicie o serviço pagamento;');
   console.log('  - para receber o webhook, exponha o gateway (ex.: ngrok http 8080) e preencha PUBLIC_BASE_URL;');
   console.log('  - sem webhook, use POST /pagamento/pagamentos/{idPedido}/sincronizar depois de pagar.');
-  console.log('  Detalhes e cartões de teste: pagamento-service/README.md');
+  console.log('  Detalhes e cartões de teste: README.md, seção Pagamento');
 })().catch((erro) => sair(`Falha de rede ao falar com o Mercado Pago: ${erro.message}`));

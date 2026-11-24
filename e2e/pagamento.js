@@ -1,5 +1,5 @@
 // Pagamento pelo gateway (gateway SIMULADO: GATEWAY_PAGAMENTO=simulado no pagamento-service/.env).
-// Para o Mercado Pago real use o roteiro do pagamento-service/README.md.
+// Para o Mercado Pago real use o roteiro do README.md, seção Pagamento.
 const { criarContexto } = require('./lib');
 
 async function executar() {

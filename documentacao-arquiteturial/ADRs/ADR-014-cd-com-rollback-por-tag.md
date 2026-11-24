@@ -31,6 +31,6 @@ O CI (`ci.yml`) valida tipagem, testes, contratos, gateway e o build das imagens
 
 ## Atualização (2026-11-22) — fluxo ensaiado e verificações do pipeline
 - **Registro configurável:** `docker-compose.deploy.yml` passou a montar a imagem como `${REGISTRY:-ghcr.io}/${REGISTRY_OWNER}/...`. O padrão continua `ghcr.io` (nada muda no CD), e `REGISTRY` permite apontar para outro registro, por exemplo um local para ensaiar o deploy.
-- **Ensaio com registro local** ([demonstracao/deploy-e-rollback.md](../../demonstracao/deploy-e-rollback.md)): deploy de uma versão boa; deploy de uma versão com o Catálogo quebrado, com **rollback automático** para a anterior e término com erro; `rollback.sh` sem argumento e com tag; `rollback.sh` para uma tag inexistente (volta à versão em uso). Observação: a troca de tag recria os 5 serviços, não só o que mudou.
+- **Ensaio com registro local** (demonstracao/deploy-e-rollback.md): deploy de uma versão boa; deploy de uma versão com o Catálogo quebrado, com **rollback automático** para a anterior e término com erro; `rollback.sh` sem argumento e com tag; `rollback.sh` para uma tag inexistente (volta à versão em uso). Observação: a troca de tag recria os 5 serviços, não só o que mudou.
 - **`cd.yml`:** o job `verificar` agora roda `tsc --noEmit` nos 5 serviços (antes, só nos 3 que não usam banco); o `jest` continua só nesses 3, e os testes de Identidade e Catálogo (que precisam de MySQL) ficam no CI.
-- **`ci.yml`:** novo job `workflows` (`actionlint`). Visão completa: [pipeline-ci-cd.md](../pipeline-ci-cd.md).
+- **`ci.yml`:** novo job `workflows` (`actionlint`). Visão completa: [pipeline-ci-cd.md](../../docs/entrega.md).
