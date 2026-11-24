@@ -138,5 +138,53 @@
  "Mario Kart 8 Deluxe (Switch)": {
   "url": "https://upload.wikimedia.org/wikipedia/en/b/b5/MarioKart8Boxart.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
   "origem": "capa:MarioKart8Boxart.jpg"
+ },
+ "Apple iPad 10ª geração 64 GB Wi-Fi": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/IPad_10.png/960px-IPad_10.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+  "origem": "wikipedia:IPad (10th generation)"
+ },
+ "Apple iPad Air 11\" M2 128 GB Wi-Fi": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/About_iPad_Air_13-inch_%28M2%29.jpg/960px-About_iPad_Air_13-inch_%28M2%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+  "origem": "wikipedia:IPad Air (M2)"
+ },
+ "Samsung Galaxy Tab S9 FE 128 GB": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/05/Samsung_Galaxy_Tab_S9.png/960px-Samsung_Galaxy_Tab_S9.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+  "origem": "wikipedia:Samsung Galaxy Tab S9"
+ },
+ "Samsung Galaxy Tab A9+ 64 GB": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Samsung_Galaxy_Tab_A9%2B_tablet.jpg/960px-Samsung_Galaxy_Tab_A9%2B_tablet.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Samsung Galaxy Tab A9+ tablet.jpg"
+ },
+ "Xiaomi Pad 6 128 GB": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Xiaomi_Pad_6_display.jpg/960px-Xiaomi_Pad_6_display.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+  "origem": "wikipedia:Xiaomi Pad 6"
+ },
+ "Lenovo Tab M10 Plus 3ª geração 128 GB": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c5/Lenovo_Tab_M10_FHD_Plus_%282026%29.jpg/960px-Lenovo_Tab_M10_FHD_Plus_%282026%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Lenovo Tab M10 FHD Plus (2026).jpg"
+ },
+ "Apple Watch Series 10 GPS 42 mm": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/06/Apple_Watch_Series_10.png/960px-Apple_Watch_Series_10.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Apple Watch Series 10.png"
+ },
+ "Apple Watch SE 2ª geração GPS 40 mm": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Apple_Watch_SE_2_%28GPS_%2B_Cellular%2C_40mm%2C_Midnight%29_with_Anchor_Blue_Sport_Loop.jpg/960px-Apple_Watch_SE_2_%28GPS_%2B_Cellular%2C_40mm%2C_Midnight%29_with_Anchor_Blue_Sport_Loop.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Apple Watch SE 2 (GPS + Cellular, 40mm, Midnight) with Anchor Blue Sport Loop.jpg"
+ },
+ "Samsung Galaxy Watch7 44 mm": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/Galaxy_Watch7.jpg/960px-Galaxy_Watch7.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Galaxy Watch7.jpg"
+ },
+ "Samsung Galaxy Watch FE 40 mm": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1c/Samsung_Galaxy_Watch6_Classic_43mm.jpg/960px-Samsung_Galaxy_Watch6_Classic_43mm.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Samsung Galaxy Watch6 Classic 43mm.jpg"
+ },
+ "Xiaomi Smart Band 9": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e9/Xiaomi_Mi_Band_8.jpg/960px-Xiaomi_Mi_Band_8.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Xiaomi Mi Band 8.jpg"
+ },
+ "Garmin Forerunner 165": {
+  "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/47/Garmin_Forerunner_165.jpg/960px-Garmin_Forerunner_165.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+  "origem": "commons:File:Garmin Forerunner 165.jpg"
  }
 }
