@@ -1,5 +1,6 @@
 import { chamar } from '../clients/http';
 import { ErroHttp } from '../middlewares/errorHandler';
+import { logger } from '../utils/logger';
 import { Cobranca, DadosCobranca, GatewayPagamento, PagamentoExterno } from './tipos';
 
 const SERVICO = 'Mercado Pago';
@@ -7,6 +8,8 @@ const BASE = 'https://api.mercadopago.com';
 
 interface RespostaPreferencia {
   id: string;
+  message?: string;
+  error?: string;
   init_point?: string;
   sandbox_init_point?: string;
 }
@@ -31,6 +34,18 @@ const paraPagamentoExterno = (p: RespostaPagamento): PagamentoExterno => ({
 
 // O Mercado Pago documenta as datas com deslocamento (ex.: -04:00); usamos +00:00 em vez de "Z".
 const paraDataMercadoPago = (data: Date | string) => new Date(data).toISOString().replace('Z', '+00:00');
+
+// O Mercado Pago só aceita `auto_return` com URLs públicas em https; com http ou localhost responde 400
+// (invalid_auto_return) e o pagamento nem é criado. Sem ele, o cliente volta à loja pelo botão "Voltar ao site".
+const urlPublicaHttps = (url: string) => {
+  try {
+    const { protocol, hostname } = new URL(url);
+    const local = hostname === 'localhost' || hostname === '[::1]' || hostname.startsWith('127.') || hostname.endsWith('.local');
+    return protocol === 'https:' && !local;
+  } catch {
+    return false;
+  }
+};
 
 // Checkout Pro: criamos uma "preferência" com os itens do pedido (RF42) e o cliente paga na página do
 // Mercado Pago. A confirmação chega pelo webhook, que consulta o pagamento na API do MP (nunca confiamos
@@ -71,7 +86,7 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
         ...(urlPublica && { notification_url: `${urlPublica.replace(/\/$/, '')}/pagamentos/webhook` }),
         ...(urlRetorno && {
           back_urls: { success: urlRetorno, pending: urlRetorno, failure: urlRetorno },
-          auto_return: 'approved',
+          ...(urlPublicaHttps(urlRetorno) && { auto_return: 'approved' }),
         }),
       };
 
@@ -82,6 +97,10 @@ export function criarGatewayMercadoPago(accessToken: string): GatewayPagamento {
         propagarCorrelacao: false, // serviço externo: não recebe o id de correlação interno
       });
       if ((r.status !== 201 && r.status !== 200) || !r.corpo?.id) {
+        logger.warn(
+          { servico: SERVICO, status: r.status, motivo: r.corpo?.message ?? r.corpo?.error ?? null, idPedido: dados.idPedido },
+          'Mercado Pago recusou a preferência de pagamento',
+        );
         throw new ErroHttp(502, 'O Mercado Pago recusou a criação do pagamento');
       }
       return {

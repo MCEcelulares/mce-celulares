@@ -1,6 +1,6 @@
 # ADR-011: Pagamento via Checkout Pro do Mercado Pago, com webhook não confiável e confirmação idempotente
 
-**Status:** Aceito (integração real ainda não validada com credenciais; ver Consequências)
+**Status:** Aceito (validado no sandbox do Mercado Pago em 24/11/2026, sem webhook; ver a atualização desta data)
 
 ## Contexto
 O RF41 exige integrar com o Mercado Pago e o RF42, gerar uma preferência de pagamento com os itens do pedido. O Mercado Pago confirma o pagamento de forma **assíncrona** (o cliente paga na página dele). Confirmar um pedido como pago é uma ação financeira: não pode ser forjada por quem conhece a URL do webhook, nem executada duas vezes, nem aceitar valor diferente do pedido.
@@ -17,7 +17,7 @@ O RF41 exige integrar com o Mercado Pago e o RF42, gerar uma preferência de pag
 ## Consequências
 - **Positivas:** ninguém consegue marcar um pedido como pago apenas chamando o webhook; repetições são seguras; o valor cobrado é sempre conferido; trocar de gateway exige só uma nova implementação da interface.
 - **Negativas:**
-  - **A integração real não foi testada com credenciais** do Mercado Pago (só com respostas simuladas); falta criar a conta de teste, informar o token e expor o webhook publicamente (`PUBLIC_BASE_URL`, por exemplo com um túnel).
+  - ~~A integração real não foi testada com credenciais~~ — **validada no sandbox em 24/11/2026** (criação, pagamento e confirmação por `sincronizar`). **Segue sem exercitar** o webhook de verdade, que exige uma URL pública (`PUBLIC_BASE_URL`, por exemplo com um túnel).
   - A assinatura `x-signature` do webhook **não foi implementada** (a documentação consultada não detalhava o formato); a reconsulta à API cobre o risco de forjar o conteúdo, mas não o de disparar consultas à toa.
   - Pagamento aprovado para um pedido que o Vendas não aceita mais (ex.: cancelado) **exige reembolso manual**; não há rotina para isso.
   - Pedido sem pagamento expira e libera o estoque (ADR-009); um pagamento aprovado depois disso, apesar do prazo do link, ainda exigiria reembolso manual.
@@ -40,3 +40,35 @@ O RF41 exige integrar com o Mercado Pago e o RF42, gerar uma preferência de pag
 - **`id_pagamento_gateway`:** o id do pagamento no Mercado Pago é gravado ao confirmar e ao marcar `REEMBOLSAR`, para localizar a transação ao reembolsar.
 - **Listagem para o operador:** `GET /pagamentos` (permissão `pedidos:listar-todos`), com filtro por `status` e paginação. Mostra o `id_pagamento_gateway` e nunca o link de pagamento.
 - **Limite do teste ponta a ponta:** o `REEMBOLSAR` só nasce de um pagamento aprovado no Mercado Pago real; com o gateway simulado ele é coberto apenas pelos testes unitários.
+
+## Atualização (2026-11-24) — validação no sandbox, tela de retorno e escopo de desenvolvimento
+**Escopo:** o projeto segue como **versão de desenvolvimento e testes**, sem hospedagem. Tudo o que depende de URL pública
+(webhook e volta automática à loja) é opcional e não foi exercitado.
+
+**Validação real (sandbox, vendedor e comprador de teste):** o serviço criou a preferência, o pagamento com o cartão `APRO`
+foi aprovado e `POST /pagamentos/{idPedido}/sincronizar` confirmou o pagamento e levou o pedido a `PAGO`. Sem webhook, o pedido
+ficou `AGUARDANDO_PAGAMENTO` até a sincronização, como previsto. Detalhes e erros comuns: `pagamento-service/README.md`, seção 6.
+
+**O que a validação mudou:**
+- **`auto_return` só com URL pública em `https`.** Com `FRONTEND_URL` em `localhost` o Mercado Pago respondia 400
+  (`invalid_auto_return`) e nenhum pagamento era criado. O serviço agora envia `auto_return` só para `https` que não seja
+  `localhost`, `127.*`, `[::1]` ou `*.local`.
+- **`back_urls` de `localhost` são aceitas e descartadas** pelo Mercado Pago (a preferência volta com `back_urls` vazias).
+  Em desenvolvimento **não há volta automática à loja**; o cliente volta pela própria loja.
+- **Motivo da recusa no log:** quando o Mercado Pago recusa a preferência, o log registra o `motivo` devolvido (antes só havia o 502).
+- **Resposta da confirmação:** `sincronizar` passa a devolver `data_pagamento` já preenchida (o banco já gravava; só a resposta
+  imediata saía vazia).
+
+**Tela de retorno do front (`/checkout/retorno/:id`) e a alternativa descartada "confirmar no retorno do navegador":**
+a decisão continua valendo. A página **não usa a URL como prova**: `status`/`payment_id` só escolhem um texto. Quem confirma é o
+back-end, com `sincronizar`, que consulta o Mercado Pago. A navegação de retorno funciona apenas como **gatilho** da conferência.
+Respostas `PENDENTE` (Pix, boleto) fazem o front acompanhar **o pedido** (`GET /vendas/pedidos/{id}`, o webhook o atualiza) por até
+2 minutos, e **não** repetir `sincronizar`: ele consulta o Mercado Pago e divide com "Pagar agora" o limite de requisições de
+pagamento.
+
+**Mercado Pago em nova aba:** "Pagar agora" abre o Checkout Pro em uma aba nova (`_blank`, sem `opener`) e a aba da loja vai para o
+pedido, onde o cliente confere o resultado (**Já paguei**) quando não há webhook nem volta automática. Se o navegador bloquear o
+pop-up, o fluxo cai para a mesma aba. O front só abre links `https` devolvidos pelo serviço.
+
+**Continua pendente:** o webhook de verdade (exige URL pública), a volta automática com `https` público, a assinatura `x-signature` e o
+reembolso (manual).
