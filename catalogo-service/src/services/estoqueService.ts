@@ -26,22 +26,17 @@ function mesmosItens(reservas: ReservaEstoque[], itens: ReservarEstoqueInput['it
   return itens.every((i) => reservas.some((r) => r.id_produto === i.id_produto && r.quantidade === i.quantidade));
 }
 
-// Reserva síncrona (chamada pelo Vendas ao criar o pedido). Tudo ou nada: se um item falhar, nada é baixado.
-// Idempotente por pedido: repetir a mesma reserva (ex.: retry do Vendas após timeout) não baixa o estoque duas vezes.
 export async function reservarEstoque(dados: ReservarEstoqueInput) {
   const { id_pedido: idPedido } = dados;
-  const itens = [...dados.itens].sort((a, b) => a.id_produto - b.id_produto); // ordem fixa evita deadlock
+  const itens = [...dados.itens].sort((a, b) => a.id_produto - b.id_produto);
 
   try {
     const resultado = await comTransacao(async (transacao) => {
-      // 1) Trava as linhas dos produtos em ordem fixa: serializa reservas concorrentes dos mesmos itens
-      //    sem deadlock e sem gap lock (travar "reservas que ainda não existem" causa deadlock no InnoDB).
       const produtos = await produtoRepository.travarPorIds(
         itens.map((i) => i.id_produto),
         transacao
       );
 
-      // 2) Só depois lê as reservas do pedido: já enxerga o que a transação concorrente acabou de gravar.
       const existentes = await reservaEstoqueRepository.buscarPorPedido(idPedido, transacao);
       if (existentes.length > 0) {
         if (existentes.some((r) => r.status !== statusReserva.ativa)) {
@@ -67,7 +62,6 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
 
       const faltas: { id_produto: number; solicitado: number; disponivel: number }[] = [];
       for (const item of itens) {
-        // Baixa atômica e condicional: só desconta se ainda houver estoque (sem ler-e-depois-escrever).
         const baixou = await produtoRepository.baixarSeHouver(item.id_produto, item.quantidade, transacao);
         if (!baixou) {
           const atual = await produtoRepository.buscarPorId(item.id_produto, transacao);
@@ -101,7 +95,6 @@ export async function reservarEstoque(dados: ReservarEstoqueInput) {
   }
 }
 
-// Devolve ao estoque os itens da reserva (pedido cancelado). Idempotente: devolver duas vezes não soma duas vezes.
 export async function devolverReserva(idPedido: number) {
   const resultado = await comTransacao(async (transacao) => {
     const previas = await reservaEstoqueRepository.buscarPorPedido(idPedido, transacao);
@@ -109,7 +102,6 @@ export async function devolverReserva(idPedido: number) {
       throw new ErroHttp(404, 'Não há reserva de estoque para este pedido');
     }
 
-    // Mesma ordem de travas da reserva (produtos primeiro, depois as reservas) para não gerar deadlock.
     await produtoRepository.travarPorIds(
       previas.map((r) => r.id_produto),
       transacao

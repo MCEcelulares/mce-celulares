@@ -39,7 +39,6 @@ export function atualizar(log: NotificacaoLog, campos: CamposLog) {
   return log.update(campos);
 }
 
-// Os mais antigos primeiro. Só traz o que tem conteúdo guardado (assunto e texto) para poder reenviar.
 export function buscarReenviaveis({ maximoDeRodadas, limite }: FiltroReenvio) {
   return NotificacaoLog.findAll({
     where: {
@@ -53,7 +52,6 @@ export function buscarReenviaveis({ maximoDeRodadas, limite }: FiltroReenvio) {
   });
 }
 
-// UPDATE condicional (status e criado_em como lidos): com várias instâncias, só uma consegue reivindicar o reenvio.
 export async function reivindicarReenvio(log: NotificacaoLog, agora: Date) {
   const [reivindicadas] = await NotificacaoLog.update(
     { status: 'PENDENTE', erro: null, criado_em: agora },

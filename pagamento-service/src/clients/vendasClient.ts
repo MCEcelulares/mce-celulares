@@ -20,7 +20,6 @@ function cabecalhoServico() {
   return { Authorization: `Bearer ${token}` };
 }
 
-// null = o Vendas respondeu 404.
 export async function buscarPedido(id: number): Promise<PedidoVendas | null> {
   const r = await chamar<PedidoVendas>(SERVICO, `${base()}/pedidos/${id}`, {
     headers: cabecalhoServico(),
@@ -31,8 +30,6 @@ export async function buscarPedido(id: number): Promise<PedidoVendas | null> {
   return r.corpo;
 }
 
-// A resposta traz o cliente (nome e e-mail) usado no evento pagamento.confirmado.
-// O Vendas aceita repetir o mesmo status, então esta chamada pode ser refeita sem efeito colateral.
 export async function atualizarStatus(id: number, status: string): Promise<PedidoVendas> {
   const r = await chamar<PedidoVendas>(SERVICO, `${base()}/pedidos/${id}/status`, {
     method: 'PATCH',

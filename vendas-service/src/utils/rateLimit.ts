@@ -14,7 +14,6 @@ function limitador(limite: number, janelaMinutos: number, mensagem: string, igno
   });
 }
 
-// Teto geral por IP. Alto de propósito: as chamadas internas de outros serviços chegam do mesmo IP.
 export const limitarGeral = limitador(
   numero(process.env.RATE_LIMIT_GERAL_MAX, 600),
   1,

@@ -27,7 +27,6 @@ export function buscarPorNomes(nomes: string[]) {
   return Cargo.findAll({ where: { nome: nomes } });
 }
 
-// Cargos que têm a permissão informada.
 export function listarComPermissao(idPermissao: number) {
   return Cargo.findAll({
     include: [{ model: Permissao, as: 'permissoes', where: { id_permissao: idPermissao }, required: true }],
@@ -57,8 +56,6 @@ export function contarUsuarios(idCargo: number) {
 export function excluir(cargo: Cargo, transacao: Transacao) {
   return cargo.destroy({ transaction: transacao });
 }
-
-// ---- vínculo cargo <-> permissão ----
 
 export function vincularPermissoes(idCargo: number, idsPermissao: number[], transacao: Transacao) {
   return CargoPermissao.bulkCreate(

@@ -14,7 +14,6 @@ function tokenDeServicoValido(header?: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-// Rotas que o Pagamento chama (token de serviço) e que também têm uso administrativo (JWT + permissão).
 export function autenticarOuServico(req: ServicoRequest, res: Response, next: NextFunction) {
   if (tokenDeServicoValido(req.headers.authorization)) {
     req.chamadaDeServico = true;

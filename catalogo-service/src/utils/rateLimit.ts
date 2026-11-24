@@ -14,7 +14,6 @@ function limitador(limite: number, janelaMinutos: number, mensagem: string, igno
   });
 }
 
-// Teto geral por IP. Alto de propósito: o Vendas consulta o Catálogo a cada item e chega sempre do mesmo IP.
 export const limitarGeral = limitador(
   numero(process.env.RATE_LIMIT_GERAL_MAX, 1000),
   1,

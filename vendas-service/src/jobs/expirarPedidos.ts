@@ -7,7 +7,6 @@ import {
 } from '../services/pedidoService';
 import { logger } from '../utils/logger';
 
-// Cancela os pedidos AGUARDANDO_PAGAMENTO mais antigos que PEDIDO_EXPIRA_MINUTOS e devolve o estoque.
 export async function expirarPedidosVencidos(agora = new Date()): Promise<number> {
   const minutos = minutosParaExpirar();
   if (!(minutos > 0)) return 0;
@@ -25,8 +24,6 @@ export async function expirarPedidosVencidos(agora = new Date()): Promise<number
   return expirados;
 }
 
-// Pedidos invisíveis (ativo=false) mais antigos que PEDIDO_ORFAO_MINUTOS: a criação caiu antes de terminar.
-// Devolve a reserva ao Catálogo e apaga o pedido.
 export async function recuperarPedidosOrfaos(agora = new Date()): Promise<number> {
   const orfaos = await idsDosPedidosInvisiveisAntigos(agora);
 

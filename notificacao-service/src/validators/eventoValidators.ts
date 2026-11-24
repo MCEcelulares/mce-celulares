@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-// Contrato definido no ADR-008.
 const cliente = z.object({
   nome: z.string().min(1).max(255),
   email: z.string().email().max(255),
@@ -12,7 +11,6 @@ export const envelopeSchema = z.object({
   versao: z.number().int(),
   origem: z.string().min(1),
   ocorridoEm: z.string().datetime(),
-  // Opcional: id da requisição HTTP que originou o evento (ADR-008, atualização 2026-11-22).
   idCorrelacao: z.string().min(1).max(100).optional(),
   dados: z.unknown(),
 });

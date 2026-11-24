@@ -14,7 +14,6 @@ function limitador(limite: number, janelaMinutos: number, mensagem: string, igno
   });
 }
 
-// Teto geral por IP. Alto de propósito: o webhook do Mercado Pago e as chamadas internas chegam do mesmo IP.
 export const limitarGeral = limitador(
   numero(process.env.RATE_LIMIT_GERAL_MAX, 600),
   1,
@@ -22,7 +21,6 @@ export const limitarGeral = limitador(
   true
 );
 
-// Cada chamada cria uma cobrança ou consulta o Mercado Pago, então o limite é bem menor.
 export const limitarPagamento = limitador(
   numero(process.env.RATE_LIMIT_PAGAMENTO_MAX, 30),
   15,

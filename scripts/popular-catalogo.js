@@ -1,13 +1,5 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-// Popula o Catálogo com categorias, marcas e produtos realistas (versão de desenvolvimento e testes).
-// Usa a API como administrador (valida os dados e renova o cache) e pode ser repetido: o que já existe é pulado.
-//
-//   node scripts/popular-catalogo.js
-//
-// Precisa do ambiente no ar (docker compose up -d) e do ADMIN_EMAIL/ADMIN_SENHA do identidade-service/.env
-// (o administrador sai do seed do Identidade). Para outro endereço do gateway: API_URL=http://host:8080.
-// Os preços e as especificações são aproximados, para demonstração; não há imagens (envie pelo painel administrativo).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -25,9 +17,7 @@ function lerEnv(arquivo) {
 
 const CATEGORIAS = ['Celulares', 'Tablets', 'Notebooks', 'Smartwatches', 'Consoles', 'Fones', 'Periféricos', 'Jogos'];
 
-// [nome, categoria, marca, preço, estoque, destaque, descrição]
 const PRODUTOS = [
-  // ---- Celulares
   ['Apple iPhone 16 128 GB', 'Celulares', 'Apple', 5999, 14, true, 'Tela Super Retina XDR de 6,1", chip A18, câmera dupla com principal de 48 MP e conexão USB-C.'],
   ['Apple iPhone 15 128 GB', 'Celulares', 'Apple', 4699, 9, false, 'Tela de 6,1" com Dynamic Island, chip A16 Bionic, câmera principal de 48 MP e conexão USB-C.'],
   ['Samsung Galaxy S25 256 GB', 'Celulares', 'Samsung', 5299, 11, true, 'Tela Dynamic AMOLED 2X de 6,2", processador Snapdragon 8 Elite for Galaxy e câmera tripla com principal de 50 MP.'],
@@ -35,7 +25,6 @@ const PRODUTOS = [
   ['Xiaomi Redmi Note 14 256 GB', 'Celulares', 'Xiaomi', 1599, 30, false, 'Tela AMOLED de 6,67" com 120 Hz, câmera principal de 108 MP e carregamento rápido.'],
   ['Motorola Moto G85 5G 256 GB', 'Celulares', 'Motorola', 1499, 18, false, 'Tela pOLED curva de 6,67" com 120 Hz, câmera principal de 50 MP com estabilização óptica e bateria de 5.000 mAh.'],
 
-  // ---- Tablets
   ['Apple iPad 10ª geração 64 GB Wi-Fi', 'Tablets', 'Apple', 3499, 12, true, 'Tela Liquid Retina de 10,9", chip A14 Bionic, conexão USB-C e câmera frontal de 12 MP na lateral horizontal.'],
   ['Apple iPad Air 11" M2 128 GB Wi-Fi', 'Tablets', 'Apple', 6299, 7, false, 'Tela Liquid Retina de 11", chip M2, compatível com Apple Pencil Pro e Magic Keyboard.'],
   ['Samsung Galaxy Tab S9 FE 128 GB', 'Tablets', 'Samsung', 2799, 10, false, 'Tela de 10,9" com 90 Hz, S Pen incluída e resistência à água e poeira IP68.'],
@@ -43,7 +32,6 @@ const PRODUTOS = [
   ['Xiaomi Pad 6 128 GB', 'Tablets', 'Xiaomi', 2299, 14, false, 'Tela de 11" com 144 Hz, processador Snapdragon 870 e quatro alto-falantes com Dolby Atmos.'],
   ['Lenovo Tab M10 Plus 3ª geração 128 GB', 'Tablets', 'Lenovo', 1199, 16, false, 'Tela de 10,6" em 2K, corpo metálico e quatro alto-falantes com Dolby Atmos.'],
 
-  // ---- Smartwatches
   ['Apple Watch Series 10 GPS 42 mm', 'Smartwatches', 'Apple', 4999, 9, true, 'Tela OLED grande e mais fina, GPS, monitoramento de saúde e resistência à água.'],
   ['Apple Watch SE 2ª geração GPS 40 mm', 'Smartwatches', 'Apple', 2499, 13, false, 'Chip S8, GPS, detecção de queda e de acidente e resistência à água.'],
   ['Samsung Galaxy Watch7 44 mm', 'Smartwatches', 'Samsung', 2299, 11, false, 'Tela Super AMOLED, processador Exynos W1000, sensor BioActive e GPS.'],
@@ -51,7 +39,6 @@ const PRODUTOS = [
   ['Xiaomi Smart Band 9', 'Smartwatches', 'Xiaomi', 349, 40, false, 'Tela AMOLED de 1,62", até 21 dias de bateria e mais de 150 modos esportivos.'],
   ['Garmin Forerunner 165', 'Smartwatches', 'Garmin', 2199, 6, false, 'Relógio de corrida com GPS, tela AMOLED, métricas de treino e até 11 dias de bateria.'],
 
-  // ---- Notebooks
   ['Apple MacBook Air 13" M3 256 GB', 'Notebooks', 'Apple', 9499, 6, true, 'Chip M3, 8 GB de memória unificada, SSD de 256 GB e tela Liquid Retina de 13,6". Leve, silencioso e sem ventoinha.'],
   ['Dell Inspiron 15 Core i5 16 GB 512 GB SSD', 'Notebooks', 'Dell', 3899, 12, false, 'Processador Intel Core i5, 16 GB de RAM, SSD de 512 GB e tela Full HD de 15,6". Para trabalho e estudos.'],
   ['Lenovo IdeaPad Slim 3 Ryzen 5 8 GB 512 GB SSD', 'Notebooks', 'Lenovo', 3199, 15, false, 'Processador AMD Ryzen 5, 8 GB de RAM, SSD de 512 GB e tela Full HD de 15,6" em um corpo fino.'],
@@ -59,7 +46,6 @@ const PRODUTOS = [
   ['ASUS Vivobook 15 Core i5 8 GB 512 GB SSD', 'Notebooks', 'ASUS', 3399, 8, false, 'Processador Intel Core i5, 8 GB de RAM, SSD de 512 GB e tela Full HD de 15,6" com teclado numérico.'],
   ['Acer Nitro V 15 Gamer RTX 4050', 'Notebooks', 'Acer', 6499, 5, false, 'Intel Core i5, 16 GB de RAM, SSD de 512 GB, placa GeForce RTX 4050 e tela Full HD de 15,6" com 144 Hz.'],
 
-  // ---- Consoles
   ['Sony PlayStation 5 Slim 1 TB com leitor de disco', 'Consoles', 'Sony', 4499, 7, true, 'Console de mesa com SSD de 1 TB, leitor de discos Ultra HD Blu-ray e controle DualSense incluso.'],
   ['Sony PlayStation 5 Slim Digital 1 TB', 'Consoles', 'Sony', 3899, 9, false, 'Versão sem leitor de discos, com SSD de 1 TB e controle DualSense incluso. Jogos pela PlayStation Store.'],
   ['Microsoft Xbox Series S 512 GB', 'Consoles', 'Microsoft', 2699, 13, false, 'Console digital compacto com SSD de 512 GB, jogos em até 1440p e controle sem fio incluso.'],
@@ -67,7 +53,6 @@ const PRODUTOS = [
   ['Nintendo Switch OLED', 'Consoles', 'Nintendo', 2399, 16, true, 'Console híbrido com tela OLED de 7", 64 GB de armazenamento e dock com porta de rede.'],
   ['Nintendo Switch Lite', 'Consoles', 'Nintendo', 1699, 11, false, 'Console portátil leve, com tela de 5,5" e controles integrados. Ideal para jogar em qualquer lugar.'],
 
-  // ---- Fones
   ['Apple AirPods 4', 'Fones', 'Apple', 1499, 25, true, 'Fones sem fio com design redesenhado, chip H2, áudio espacial personalizado e estojo de carregamento USB-C.'],
   ['Samsung Galaxy Buds3', 'Fones', 'Samsung', 1199, 20, false, 'Fones sem fio com cancelamento ativo de ruído e estojo de carregamento.'],
   ['Sony WH-1000XM5', 'Fones', 'Sony', 2199, 8, false, 'Headphone sem fio com cancelamento de ruído líder da categoria e até 30 horas de bateria.'],
@@ -75,7 +60,6 @@ const PRODUTOS = [
   ['HyperX Cloud II Gamer 7.1', 'Fones', 'HyperX', 549, 17, false, 'Headset gamer com áudio surround 7.1 virtual, microfone removível com cancelamento de ruído e almofadas de espuma viscoelástica.'],
   ['Logitech G435 Lightspeed sem fio', 'Fones', 'Logitech', 399, 24, false, 'Headset gamer sem fio ultraleve, com conexão Lightspeed e Bluetooth e microfones com cancelamento de ruído.'],
 
-  // ---- Periféricos
   ['Logitech MX Master 3S', 'Periféricos', 'Logitech', 599, 19, true, 'Mouse sem fio ergonômico com sensor de 8.000 DPI, cliques silenciosos e rolagem eletromagnética MagSpeed.'],
   ['Logitech MX Keys S', 'Periféricos', 'Logitech', 699, 12, false, 'Teclado sem fio com teclas esféricas, iluminação inteligente e conexão com até três dispositivos.'],
   ['Logitech G203 Lightsync', 'Periféricos', 'Logitech', 139, 45, false, 'Mouse gamer com sensor de 8.000 DPI, seis botões programáveis e iluminação RGB personalizável.'],
@@ -83,7 +67,6 @@ const PRODUTOS = [
   ['Redragon Kumara K552 Mecânico', 'Periféricos', 'Redragon', 229, 33, false, 'Teclado mecânico compacto sem teclado numérico, com switches Outemu Blue e iluminação LED.'],
   ['Logitech C920 HD Pro Webcam', 'Periféricos', 'Logitech', 449, 21, false, 'Webcam Full HD 1080p com microfones estéreo e correção automática de luz. Ideal para reuniões e transmissões.'],
 
-  // ---- Jogos
   ['EA Sports FC 25 (PS5)', 'Jogos', 'Electronic Arts', 249, 28, false, 'O novo capítulo do futebol da EA, com HyperMotionV e Ultimate Team. Mídia física para PlayStation 5.'],
   ['God of War Ragnarök (PS5)', 'Jogos', 'Sony', 199, 15, false, 'Kratos e Atreus enfrentam o Ragnarök em uma aventura épica pelos nove reinos. Mídia física para PlayStation 5.'],
   ['Elden Ring (PS5)', 'Jogos', 'Bandai Namco', 229, 12, false, 'RPG de ação em mundo aberto criado por FromSoftware e George R. R. Martin. Mídia física para PlayStation 5.'],
@@ -100,7 +83,7 @@ async function chamar(metodo, rota, corpo, token) {
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
   });
   let json = null;
-  try { json = await r.json(); } catch { /* resposta sem corpo */ }
+  try { json = await r.json(); } catch { }
   if (!r.ok) throw new Error(`${metodo} ${rota} -> HTTP ${r.status} ${json?.erro ?? ''} ${json?.detalhes ? JSON.stringify(json.detalhes) : ''}`.trim());
   return json;
 }

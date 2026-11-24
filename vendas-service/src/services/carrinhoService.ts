@@ -4,7 +4,6 @@ import { RegistroDuplicadoError } from '../repositories/erros';
 import { ErroHttp } from '../middlewares/errorHandler';
 import * as catalogo from '../clients/catalogoClient';
 
-// Valores em centavos para somar sem erro de ponto flutuante.
 export const centavos = (valor: number | string) => Math.round(Number(valor) * 100);
 
 export function paraResposta(carrinho: Carrinho) {

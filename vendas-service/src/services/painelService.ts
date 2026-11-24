@@ -5,8 +5,6 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 
 const dia = (valor: unknown) => (valor instanceof Date ? valor.toISOString() : String(valor)).slice(0, 10);
 
-// RF46 e RF47: métricas do painel administrativo (contagem de pedidos e receita). Usuários e produtos
-// são dados de outros serviços e saem das rotas de resumo deles (ADR-012).
 export async function resumoDoPainel(dias: number) {
   const porStatusLinhas = await painelRepository.contarPorStatus();
 
@@ -26,7 +24,6 @@ export async function resumoDoPainel(dias: number) {
   };
 }
 
-// RF18: produtos mais vendidos, contando só pedidos que geraram receita.
 export async function maisVendidos(limite: number) {
   const linhas = await painelRepository.maisVendidos(limite);
 
