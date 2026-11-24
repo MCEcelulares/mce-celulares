@@ -36,7 +36,10 @@ async function confirmar(pagamento: Pagamento, idGateway: string | null = null) 
   const reivindicado = await pagamentoRepository.reivindicarAprovacao(pagamento.id_pagamento, idGateway);
   if (!reivindicado) return;
 
+  // O banco já foi atualizado acima; espelha no objeto para a resposta desta chamada não sair com a data vazia.
   pagamento.status = 'APROVADO';
+  pagamento.data_pagamento = new Date();
+  pagamento.id_pagamento_gateway = idGateway;
   registrarEvento('pagamento_aprovado');
 
   if (!pedido.cliente) {
