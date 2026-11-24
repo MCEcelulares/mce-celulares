@@ -5,8 +5,6 @@ import { registrarCache } from '../utils/metricas';
 const chaveVersao = 'catalogo:versao';
 const ttlSegundos = () => Number(process.env.CACHE_TTL_SEGUNDOS ?? 300);
 
-// Cache-aside: lê do Redis; no miss, carrega do banco e grava com TTL.
-// Redis fora do ar nunca derruba a requisição: cai direto no banco (degradação graciosa).
 export async function obterOuCarregar<T>(chave: string, carregar: () => Promise<T>): Promise<T> {
   let chaveCompleta: string | null = null;
 
@@ -36,8 +34,6 @@ export async function obterOuCarregar<T>(chave: string, carregar: () => Promise<
   return valor;
 }
 
-// Invalidação por versão: incrementar a versão deixa todas as chaves antigas órfãs (expiram pelo TTL),
-// sem precisar de SCAN/DEL em massa.
 export async function invalidarCatalogo(): Promise<void> {
   try {
     await redis.incr(chaveVersao);

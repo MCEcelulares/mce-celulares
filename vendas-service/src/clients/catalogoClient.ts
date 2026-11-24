@@ -23,8 +23,6 @@ export interface FaltaDeEstoque {
   disponivel: number;
 }
 
-// ok = reservado (ou já estava reservado para este pedido); sem_estoque = o Catálogo não reservou nada;
-// recusada = outro 4xx do Catálogo (produto inexistente ou inativo, reserva já devolvida, reserva diferente...).
 export type ResultadoReserva =
   | { tipo: 'ok' }
   | { tipo: 'sem_estoque'; faltas: FaltaDeEstoque[] }
@@ -36,7 +34,6 @@ function cabecalhoServico() {
   return { Authorization: `Bearer ${token}` };
 }
 
-// null = o Catálogo respondeu 404 (produto não existe ou está inativo).
 export async function buscarProduto(id: number): Promise<ProdutoCatalogo | null> {
   const r = await chamar<ProdutoCatalogo>(SERVICO, `${base()}/produtos/${id}`, { tentativas: 2 });
   if (r.status === 404) return null;
@@ -44,7 +41,6 @@ export async function buscarProduto(id: number): Promise<ProdutoCatalogo | null>
   return r.corpo;
 }
 
-// Reserva todos os itens do pedido de uma vez (tudo ou nada). Idempotente por pedido, por isso pode ser repetida.
 export async function reservarEstoque(idPedido: number, itens: ItemReserva[]): Promise<ResultadoReserva> {
   const r = await chamar<{ erro?: string; detalhes?: FaltaDeEstoque[] }>(SERVICO, `${base()}/interno/reservas`, {
     method: 'POST',
@@ -62,7 +58,6 @@ export async function reservarEstoque(idPedido: number, itens: ItemReserva[]): P
   throw new ErroHttp(502, 'Não foi possível reservar o estoque no Catálogo');
 }
 
-// Devolve ao estoque a reserva do pedido. Idempotente. 404 = não havia reserva (nada a devolver).
 export async function devolverReserva(idPedido: number): Promise<void> {
   const r = await chamar<unknown>(SERVICO, `${base()}/interno/reservas/${idPedido}/devolucao`, {
     method: 'POST',

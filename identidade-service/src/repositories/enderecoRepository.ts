@@ -37,7 +37,6 @@ export function remover(endereco: Endereco, transacao: Transacao) {
   return endereco.destroy({ transaction: transacao });
 }
 
-// O endereço mais antigo do usuário (vira o principal quando o principal é removido).
 export function buscarMaisAntigo(idUsuario: number, transacao: Transacao) {
   return Endereco.findOne({
     where: { id_usuario: idUsuario },

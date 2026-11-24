@@ -4,10 +4,7 @@ import { registrarEvento } from '../utils/metricas';
 import { contextoRequisicao } from '../utils/contexto';
 
 const timeoutMs = () => Number(process.env.HTTP_TIMEOUT_MS ?? 5000);
-// Espera entre tentativas: base, 2x base, 4x base... (200ms, 400ms, ...)
 const backoffBaseMs = () => Number(process.env.HTTP_BACKOFF_BASE_MS ?? 200);
-// Circuit breaker: depois de N chamadas seguidas que falharam o circuito abre e as chamadas são recusadas na hora;
-// passado CIRCUIT_RESET_MS uma única chamada de teste passa (meio-aberto): se der certo o circuito fecha.
 const falhasParaAbrir = () => Number(process.env.CIRCUIT_FALHAS ?? 5);
 const esperaParaTestarMs = () => Number(process.env.CIRCUIT_RESET_MS ?? 10_000);
 
@@ -15,10 +12,7 @@ interface Opcoes {
   method?: string;
   headers?: Record<string, string>;
   body?: unknown;
-  // Só chamadas idempotentes (GET, reserva e devolução por pedido) devem ter mais de uma tentativa.
   tentativas?: number;
-  // Repassa o x-correlation-id da requisição em andamento, para o fluxo ser rastreável entre os serviços.
-  // Desligue em chamadas a sistemas externos (ex.: Mercado Pago).
   propagarCorrelacao?: boolean;
 }
 
@@ -95,9 +89,6 @@ function registrarFalha(servico: string) {
 
 const esperar = (ms: number) => (ms > 0 ? new Promise<void>((resolve) => setTimeout(resolve, ms)) : Promise.resolve());
 
-// ADR-003: chamadas síncronas entre serviços têm timeout, retry com backoff e circuit breaker.
-// Falha de rede, timeout ou 5xx do outro serviço (depois das tentativas) viram 503 aqui.
-// Resposta 4xx é resposta válida do outro serviço: não conta como falha para o circuito.
 export async function chamar<T>(servico: string, url: string, opcoes: Opcoes = {}): Promise<Resposta<T>> {
   const { method = 'GET', headers = {}, body, tentativas = 1, propagarCorrelacao = true } = opcoes;
   const idCorrelacao = propagarCorrelacao ? contextoRequisicao.getStore()?.idCorrelacao : undefined;

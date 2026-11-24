@@ -30,7 +30,6 @@ export function autenticar(req: AuthRequest, res: Response, next: NextFunction) 
   next();
 }
 
-// Rotas públicas (vitrine): com token válido o usuário ganha visão de gestão; token ausente ou expirado = visitante.
 export function autenticarOpcional(req: AuthRequest, _res: Response, next: NextFunction) {
   const payload = lerToken(req);
   if (payload) req.usuarioAutenticado = payload;

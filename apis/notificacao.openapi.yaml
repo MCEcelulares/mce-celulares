@@ -207,6 +207,3 @@ components:
         banco: { type: string, enum: [ok, falha] }
         redis: { type: string, enum: [ok, falha] }
 
-# Este serviço não expõe endpoints de escrita para os eventos —
-# eles chegam via Redis Pub/Sub (canais pedido.criado e pagamento.confirmado),
-# não via HTTP. O formato das mensagens está no ADR-008.

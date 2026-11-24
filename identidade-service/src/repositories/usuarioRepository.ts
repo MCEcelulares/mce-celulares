@@ -104,7 +104,6 @@ export async function listar({ page, limit, busca, cargo, ativo }: ListarUsuario
   return { registros: rows, total: count };
 }
 
-// Usuário com os cargos e as permissões de cada cargo (base do RBAC).
 export function buscarComCargosEPermissoes(idUsuario: number) {
   return Usuario.findByPk(idUsuario, {
     include: [

@@ -1,8 +1,4 @@
 /* eslint-disable no-console */
-// Gera tráfego para alimentar as métricas dos SLOs (leituras do catálogo e pedidos), com o ambiente no ar.
-//   node demonstracao/gerar-carga.js                      # 20 pedidos (5 pagos) e 300 leituras
-//   PEDIDOS=40 PAGOS=10 LEITURAS=600 node demonstracao/gerar-carga.js
-// Cria dados de teste (categoria, marca, produto, um usuário ...@mce.test); nada é apagado.
 const { criarContexto } = require('../e2e/lib');
 
 const PEDIDOS = Number(process.env.PEDIDOS ?? 20);
@@ -17,7 +13,6 @@ const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:8080';
   const produto = base.produtos[0];
   const cliente = await c.novoCliente('carga');
 
-  // Leituras públicas do catálogo: as repetidas (mesma consulta) acertam o cache, e as variações forçam miss.
   let ok = 0;
   const consultas = [`/catalogo/produtos?limite=10`, `/catalogo/produtos/${produto.id_produto}`, `/catalogo/produtos/destaque`];
   const inicio = Date.now();
@@ -28,7 +23,6 @@ const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:8080';
   }
   console.log(`leituras: ${ok}/${LEITURAS} com 200 em ${((Date.now() - inicio) / 1000).toFixed(1)} s`);
 
-  // Pedidos: o mesmo cliente monta um carrinho e fecha o pedido várias vezes; os primeiros PAGOS também são pagos.
   let criados = 0;
   let pagos = 0;
   for (let i = 0; i < PEDIDOS; i++) {

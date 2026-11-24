@@ -104,7 +104,7 @@ describe('login e sessão (RF02, RF03)', () => {
     const inexistente = await api.post('/auth/login').send({ email: email('ninguem'), senha: '123456' });
     expect(errada.status).toBe(401);
     expect(inexistente.status).toBe(401);
-    expect(errada.body).toEqual(inexistente.body); // não revela se o e-mail existe
+    expect(errada.body).toEqual(inexistente.body);
   });
 
   it('login devolve access token (com cargos/permissões), refresh token e expiração', async () => {
@@ -236,7 +236,7 @@ describe('autorização por permissão (RF06, RF07, RF08, RF09)', () => {
 
     const novo = (await logar('cliente')).body;
     expect(decodificar(novo.token).cargos).toEqual(['vendas']);
-    expect((await api.get('/usuarios').set(auth(novo.token))).status).toBe(200); // vendas tem usuarios:listar
+    expect((await api.get('/usuarios').set(auth(novo.token))).status).toBe(200);
 
     await api.put(`/usuarios/${idCliente}/cargos`).set(auth(tokenAdmin)).send({ cargos: ['cliente'] });
   });
@@ -457,6 +457,6 @@ describe('observabilidade (RNF05, RNF11)', () => {
     expect(r.status).toBe(200);
     expect(r.text).toContain('http_requisicoes_total');
     expect(r.text).toContain('identidade_eventos_total{evento="login_ok"');
-    expect(r.text).not.toMatch(/rota="[^"]*\/\d+/); // nada de /usuarios/123
+    expect(r.text).not.toMatch(/rota="[^"]*\/\d+/);
   });
 });

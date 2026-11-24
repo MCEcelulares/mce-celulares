@@ -11,8 +11,6 @@ export interface PagamentoConfirmadoDados {
   cliente: { nome: string; email: string };
 }
 
-// Contrato do ADR-008: envelope comum + dados mínimos. Redis Pub/Sub não guarda mensagens;
-// se a publicação falhar o pagamento continua confirmado (o e-mail se perde, aceito no MVP).
 export async function publicarPagamentoConfirmado(dados: PagamentoConfirmadoDados): Promise<void> {
   const tipo = 'pagamento.confirmado';
   const envelope = {
@@ -21,12 +19,10 @@ export async function publicarPagamentoConfirmado(dados: PagamentoConfirmadoDado
     versao: 1,
     origem: 'pagamento-service',
     ocorridoEm: new Date().toISOString(),
-    // id da requisição que originou o evento (opcional, ADR-008): liga o fluxo HTTP ao consumo do evento
     idCorrelacao: contextoRequisicao.getStore()?.idCorrelacao,
     dados,
   };
   try {
-    // publish devolve quantos assinantes receberam a mensagem: 0 significa que ninguém estava ouvindo.
     const receptores = await redis.publish(tipo, JSON.stringify(envelope));
     logger.info({ idEvento: envelope.id, tipo, idPedido: dados.idPedido, receptores }, 'evento publicado');
   } catch (err) {

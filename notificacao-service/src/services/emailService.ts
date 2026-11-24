@@ -23,8 +23,6 @@ export interface Email {
 
 const pausa = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Provedores de SMTP limitam envios por segundo (ex.: Mailtrap grátis responde 550).
-// Os envios saem um por vez, com EMAIL_INTERVALO_MS de pausa entre eles.
 let fila: Promise<unknown> = Promise.resolve();
 
 export function enviarEmail({ para, assunto, texto, responderPara }: Email): Promise<void> {

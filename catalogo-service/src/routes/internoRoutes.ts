@@ -5,7 +5,6 @@ import { validar } from '../middlewares/validate';
 import { reservarEstoqueSchema, consultarProdutosInternoSchema } from '../validators/estoqueValidators';
 import { idPedidoParamSchema } from '../validators/paramsValidators';
 
-// Rotas só para outros serviços (Vendas). O nginx bloqueia /catalogo/interno/ e aqui exigimos o token de serviço (ADR-009).
 const router = Router();
 
 router.use(autenticarServico);

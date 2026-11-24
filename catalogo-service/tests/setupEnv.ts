@@ -13,7 +13,7 @@ const { publicKey, privateKey } = generateKeyPairSync('rsa', {
 });
 
 process.env.JWT_PUBLIC_KEY = publicKey;
-process.env.JWT_PRIVATE_KEY_TESTE = privateKey; // só os testes assinam tokens (no serviço real só existe a chave pública)
+process.env.JWT_PRIVATE_KEY_TESTE = privateKey;
 process.env.SERVICE_TOKEN = 'token-de-servico-de-teste';
 process.env.METRICS_TOKEN = 'token-de-teste';
 process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'catalogo-imagens-'));

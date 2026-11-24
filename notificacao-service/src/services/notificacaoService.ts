@@ -21,7 +21,6 @@ interface Envio {
 const TENTATIVAS_ENVIO = 3;
 const pausa = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Tenta de novo em falhas transitórias do SMTP, com pausa crescente (cabe no SLO 4: p95 < 10s).
 async function enviarComTentativas(email: Parameters<typeof enviarEmail>[0]) {
   const intervalo = Number(process.env.EMAIL_RETRY_MS ?? 500);
   for (let tentativa = 1; ; tentativa++) {
@@ -35,10 +34,6 @@ async function enviarComTentativas(email: Parameters<typeof enviarEmail>[0]) {
   }
 }
 
-// A restrição UNIQUE (id_pedido, tipo) garante que o mesmo e-mail não é enviado duas vezes (ADR-008).
-// Exceções: se a tentativa anterior terminou em FALHA, ou ficou PENDENTE por tempo demais (o processo caiu no meio
-// do envio), um evento republicado tenta enviar de novo (e a rotina de reenvio faz o mesmo sozinha).
-// Um envio normal leva segundos (3 tentativas com timeout). PENDENTE por bem mais que isso é um envio que não terminou.
 function pendentePresa(log: NotificacaoLog, agora: Date = new Date()): boolean {
   const minutos = Number(process.env.NOTIFICACAO_PENDENTE_MINUTOS ?? 10);
   if (log.status !== 'PENDENTE' || !log.criado_em) return false;
@@ -73,7 +68,6 @@ async function registrarTentativa({ idPedido, tipo, destinatario, assunto, texto
   }
 }
 
-// Envia (com as tentativas rápidas de enviarComTentativas) e grava o resultado. Cada chamada conta como uma rodada.
 async function executarEnvio(
   log: NotificacaoLog,
   { idPedido, tipo, destinatario, assunto, texto, ocorridoEm }: Omit<Envio, 'ocorridoEm'> & { ocorridoEm?: string }
@@ -103,15 +97,12 @@ async function enviarUmaVez(envio: Envio) {
   await executarEnvio(log, envio);
 }
 
-// ---- Reenvio automático (FALHA e PENDENTE preso) ----
 const maximoDeRodadas = () => Number(process.env.NOTIFICACAO_REENVIO_MAX_TENTATIVAS ?? 5);
 
-// Espera antes da próxima rodada: dobra a cada rodada já feita (2, 2, 4, 8... min), com teto de 60 min.
 export function esperaEmMinutos(rodadas: number): number {
   return Math.min(2 ** Math.max(rodadas, 1), 60);
 }
 
-// Reenvia as notificações que falharam, uma de cada vez. Devolve quantas foram reenviadas (com sucesso ou não).
 export async function reenviarNotificacoes(agora: Date = new Date()): Promise<number> {
   const candidatas = await notificacaoLogRepository.buscarReenviaveis({ maximoDeRodadas: maximoDeRodadas(), limite: 20 });
 
@@ -123,7 +114,6 @@ export async function reenviarNotificacoes(agora: Date = new Date()): Promise<nu
         : agora.getTime() - new Date(log.criado_em).getTime() >= esperaEmMinutos(log.tentativas) * 60_000;
     if (!pronta) continue;
 
-    // Com várias instâncias, só uma consegue reivindicar o reenvio.
     if (!(await notificacaoLogRepository.reivindicarReenvio(log, agora))) continue;
 
     await executarEnvio(log, {

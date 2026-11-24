@@ -1,7 +1,6 @@
 import { reenviarNotificacoes } from '../services/notificacaoService';
 import { logger } from '../utils/logger';
 
-// Roda o reenvio de tempos em tempos. Nunca deixa duas rodadas ao mesmo tempo nesta instância.
 export function iniciarReenvioDeNotificacoes(): NodeJS.Timeout {
   const intervaloMs = Number(process.env.NOTIFICACAO_REENVIO_VERIFICAR_SEGUNDOS ?? 60) * 1000;
   let rodando = false;

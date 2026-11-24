@@ -1,4 +1,3 @@
-// Os testes não usam MySQL, Redis, Vendas nem Mercado Pago reais.
 jest.mock('ioredis', () => require('ioredis-mock'));
 
 jest.mock('../src/config/database', () => ({

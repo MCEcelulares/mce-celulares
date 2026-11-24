@@ -37,7 +37,6 @@ export class Pagamento
   declare status: StatusPagamento;
   declare id_externo: string | null;
   declare url_pagamento: string | null;
-  // id do pagamento no gateway (Mercado Pago), para localizar a transação ao reembolsar.
   declare id_pagamento_gateway: string | null;
 }
 

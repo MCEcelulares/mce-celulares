@@ -71,7 +71,7 @@ describe('pedido.criado', () => {
 
       emailMock.mockClear();
       logMock.create.mockResolvedValue(log);
-      await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado)); // sem idCorrelacao
+      await tratarMensagem('pedido.criado', evento('pedido.criado', pedidoCriado));
       expect(emailMock).toHaveBeenCalledTimes(1);
     } finally {
       info.mockRestore();

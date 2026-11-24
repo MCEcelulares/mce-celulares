@@ -14,7 +14,6 @@ export function urlDaImagem(arquivo: string | null | undefined): string | null {
   return arquivo ? `${urlBaseDasImagens}/${arquivo}` : null;
 }
 
-// Confere o conteúdo real do arquivo (magic bytes), não o mimetype/extensão informados pelo cliente.
 export async function gravarImagem(buffer: Buffer): Promise<string> {
   const tipo = detectarTipoDeImagem(buffer);
   if (!tipo) {

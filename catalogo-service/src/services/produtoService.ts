@@ -121,7 +121,6 @@ export async function atualizarProduto(id: number, dados: AtualizarProdutoInput,
   return paraResposta(await obterProdutoOuFalhar(id));
 }
 
-// Produto nunca é apagado: pedidos antigos guardam snapshot, e o histórico do estoque aponta para ele (RF12 permite inativar).
 export async function inativarProduto(id: number, inativadoPor: number) {
   const produto = await obterProdutoOuFalhar(id);
   if (produto.ativo) {
@@ -187,7 +186,6 @@ export async function consultarProdutosInterno(ids: number[]) {
   }));
 }
 
-// Devolve estoque (pedido cancelado ou criação de pedido que falhou no meio). Vale também para produto inativo.
 export async function reporEstoque(id: number, quantidade: number) {
   const encontrado = await produtoRepository.reporEstoque(id, quantidade);
   if (!encontrado) throw new ErroHttp(404, 'Produto não existe');
@@ -198,7 +196,6 @@ export async function reporEstoque(id: number, quantidade: number) {
   return { id_produto: id, estoque: atualizado!.estoque };
 }
 
-// RF46: contagens do catálogo para o painel (usuários e pedidos saem dos serviços donos desses dados, ADR-012).
 export async function resumoDoCatalogo() {
   const c = await produtoRepository.contagens();
 

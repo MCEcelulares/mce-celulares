@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# Verifica o gateway Nginx de um ambiente que já está no ar (docker compose up -d).
-#   ./scripts/verificar-gateway.sh                # testes só de leitura
-#   ./scripts/verificar-gateway.sh --isolamento   # também para o serviço "vendas" por alguns segundos e confere o 502/504
-# Variável: GATEWAY (padrão http://localhost:8080). Sai com código 1 se algum teste falhar.
 set -u
 
 GW="${GATEWAY:-http://localhost:8080}"
 falhas=0
 
-# esperar <descrição> <código esperado, ou alternativas como "502|504"> <caminho> [argumentos extras do curl]
 esperar() {
   local descricao="$1" esperado="$2" caminho="$3"; shift 3
   local obtido
@@ -56,7 +51,6 @@ else printf '  ok    %-58s %s\n' "Server sem versão" "${servidor:-Server ausent
 if [ "${1:-}" = "--isolamento" ]; then
   echo "== isolamento de falha (para o serviço vendas e religa)"
   docker stop vendas >/dev/null
-  # 502 (nome já fora do DNS) ou 504 (nome ainda em cache do resolver; desiste em 5 s): serviço fora do ar vira erro rápido
   esperar "GET /vendas/health com o serviço parado" "502|504" "/vendas/health"
   esperar "GET /catalogo/health continua no ar" 200 "/catalogo/health"
   esperar "GET /health (Nginx) continua no ar" 200 "/health"

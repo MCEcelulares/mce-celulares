@@ -24,8 +24,6 @@ export interface EnderecoIdentidade {
   cep: string;
 }
 
-// O Identidade só deixa o próprio usuário (ou quem tem usuarios:ver) ler estes dados,
-// por isso o token do usuário logado é repassado (ver identidade.openapi.yaml).
 async function consultar<T>(caminho: string, authorization: string): Promise<T | null> {
   const r = await chamar<T>(SERVICO, `${base()}${caminho}`, { headers: { Authorization: authorization }, tentativas: 2 });
   if (r.status === 200 && r.corpo) return r.corpo;
