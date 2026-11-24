@@ -3,7 +3,7 @@
 **Status:** Aceito
 
 ## Contexto
-O Catálogo é o serviço mais lido do sistema: home, listagem com filtros, detalhe de produto e, a cada pedido, a consulta de preço e estoque feita pelo Vendas (`GET /produtos/:id`). As leituras repetem as mesmas consultas ao MySQL, e o requisito de qualidade 1 ([quality-scenarios-slo.md](../../qualidade-observabilidade/quality-scenarios-slo.md)) pede p95 < 300 ms na listagem com cache. O cache precisa ser **distribuído** (o Redis já existe no ambiente, [ADR-003](ADR-003-comunicacao-sincrona-assincrona.md)), para continuar válido se o serviço rodar em mais de uma réplica.
+O Catálogo é o serviço mais lido do sistema: home, listagem com filtros, detalhe de produto e, a cada pedido, a consulta de preço e estoque feita pelo Vendas (`GET /produtos/:id`). As leituras repetem as mesmas consultas ao MySQL, e o requisito de qualidade 1 ([quality-scenarios-slo.md](../../docs/qualidade.md)) pede p95 < 300 ms na listagem com cache. O cache precisa ser **distribuído** (o Redis já existe no ambiente, [ADR-003](ADR-003-comunicacao-sincrona-assincrona.md)), para continuar válido se o serviço rodar em mais de uma réplica.
 
 ## Decisão
 Usar o padrão **cache-aside** no `catalogo-service`, implementado em `services/cacheService.ts`:

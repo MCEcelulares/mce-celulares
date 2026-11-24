@@ -11,7 +11,7 @@ Nos 5 serviços, os `services` usavam os models do Sequelize diretamente: `findA
 A separação `routes → controllers → services → repository → models` fazia parte do desenho inicial do projeto; ela só não tinha sido implementada.
 
 ## Decisão
-Cada serviço ganha `src/repositories/`, com **um repository por agregado/entidade** (13 no total, listados em [arquitetura-em-camadas.md](../arquitetura-em-camadas.md)).
+Cada serviço ganha `src/repositories/`, com **um repository por agregado/entidade** (13 no total, listados em arquitetura-em-camadas.md).
 
 - **Só o repository fala com o Sequelize.** Controllers, services, jobs, middlewares, routes, validators e clients não importam `sequelize` nem os models (só `import type` e as constantes de status). A regra é conferida por `scripts/verificar-camadas.py` no CI (job `camadas`).
 - **Repository decide como guardar e buscar; service decide o que fazer.** Consultas, `Op`, `literal`, trava de linhas e `UPDATE` condicional ficam no repository; ele devolve o resultado (um boolean "alterou?", a lista, o total). Quem escolhe entre 404, 409 ou seguir em frente é o service.

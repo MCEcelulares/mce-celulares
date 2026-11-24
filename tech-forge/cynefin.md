@@ -1,12 +1,14 @@
-# Classificação do Projeto — Framework Cynefin
+# Classificação do projeto (Cynefin)
 
-## Domínio escolhido: **Complicado**
+**Domínio escolhido: Complicado.**
 
-## Justificativa
+O Cynefin classifica um problema em Simples, Complicado, Complexo ou Caótico. A classificação define como gerir o projeto.
 
-- **Não é Simples:** o projeto não tem uma solução única e trivial — há decisões arquiteturais reais (quantos serviços, como dividir dados, síncrono vs. assíncrono) que exigem análise.
-- **É Complicado, não Complexo:** apesar de exigir conhecimento especializado (microsserviços, mensageria, cache distribuído), o domínio de e-commerce é bem conhecido e documentado — existem boas práticas estabelecidas (padrão cache-aside, Pub/Sub, API Gateway, DDD) que podem ser aplicadas com planejamento. Não estamos navegando um território totalmente desconhecido onde só a experimentação revela o caminho (isso seria Complexo).
-- **Não é Caótico:** há tempo para planejar antes de agir — não é uma situação de crise exigindo ação imediata sem análise.
+| Domínio | O projeto se encaixa? | Por quê |
+|---|---|---|
+| Simples | Não | Há decisões reais a tomar (quantos serviços, como dividir os dados, síncrono ou assíncrono) |
+| **Complicado** | **Sim** | Exige conhecimento especializado, mas o e-commerce é um problema conhecido, com boas práticas estabelecidas (cache-aside, Pub/Sub, API Gateway, DDD) |
+| Complexo | Não | Não é um território desconhecido em que só a experimentação mostra o caminho |
+| Caótico | Não | Há tempo para planejar antes de agir |
 
-## Implicação prática
-Como o domínio é Complicado, faz sentido **analisar antes de agir**: por isso nossa fase de inicial concentra decisões de arquitetura (ADRs, C4, DDD) antes de começar a codar. Ao mesmo tempo, como o projeto evoluiu bastante durante o planejamento, a condução do dia a dia se beneficia de uma abordagem iterativa — daí a escolha por ciclo de vida ágil.
+**O que isso muda na prática:** em um problema complicado, vale **analisar antes de agir**. Por isso as decisões de arquitetura (C4, DDD e ADRs) vieram antes do código. Como o escopo ainda mudou durante o projeto, o dia a dia seguiu uma abordagem iterativa, o que levou ao ciclo de vida ágil ([ciclo-de-vida.md](ciclo-de-vida.md)).

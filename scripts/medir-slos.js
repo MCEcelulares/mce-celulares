@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-// Mede os SLOs de qualidade-observabilidade/quality-scenarios-slo.md a partir das métricas dos serviços e do log do Nginx.
+// Mede os SLOs de docs/qualidade.md a partir das métricas dos serviços e do log do Nginx.
 //   node scripts/medir-slos.js              # tudo desde que os containers subiram; log do Nginx das últimas 24h
 //   node scripts/medir-slos.js 2h           # outra janela para o log do Nginx (formato do `docker logs --since`)
 //   node scripts/medir-slos.js --zerar      # grava uma linha de base: as próximas medições mostram só o que vier depois
