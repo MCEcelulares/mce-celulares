@@ -103,10 +103,15 @@ Antes, suba os limites de login e cadastro no `identidade-service/.env` (instru�
 Com o ambiente no ar e o administrador criado pelo seed do Identidade, popule o catálogo (6 categorias, 19 marcas e 37 produtos realistas):
 ```bash
 node scripts/popular-catalogo.js     # pode repetir: o que já existe é pulado
+node scripts/popular-imagens.js      # baixa e envia a foto de cada produto (pode repetir; --forcar troca todas)
 ```
-Categorias: Celulares, Notebooks, Consoles, Fones, Periféricos e Jogos. Preços e especificações são aproximados, para demonstração, e os produtos
-ficam sem foto (envie pelo painel administrativo do front, na edição do produto). Um produto (Xbox Series X) fica sem estoque de propósito, para
-mostrar o estado "Indisponível".
+Categorias: Celulares, Notebooks, Consoles, Fones, Periféricos e Jogos. Preços e especificações são aproximados, para demonstração. Um produto
+(Xbox Series X) fica sem estoque de propósito, para mostrar o estado "Indisponível".
+
+As fotos vêm de capas e artigos da Wikipedia e do Wikimedia Commons (`scripts/imagens-produtos.json` guarda a origem de cada uma), só para
+demonstração acadêmica, sem fins comerciais. **35 dos 37 produtos têm foto; algumas são de um modelo parecido da mesma linha** (ex.: o fone
+Sony WH-1000XM5 usa a foto do XM3, o mouse G203 usa a de um G502) porque o Commons não tem foto própria do modelo exato. **JBL Tune 520BT e HyperX
+Cloud II ficam sem foto**; envie pelo painel administrativo do front, na edição do produto, ou acrescente a URL em `imagens-produtos.json`.
 
 Para **zerar** os dados antes de uma demonstração (**apaga usuários, pedidos, pagamentos, notificações e o catálogo; mantém a estrutura, os
 cargos e as permissões**). Faça uma cópia antes, se houver algo a guardar:
@@ -124,6 +129,7 @@ docker exec redis redis-cli FLUSHALL
 docker exec catalogo sh -c 'find /app/uploads -type f -delete'          # imagens enviadas
 docker exec identidade npx sequelize-cli db:seed --seed 202612101317-seed-admin.js   # recria o administrador (ADMIN_EMAIL/ADMIN_SENHA)
 node scripts/popular-catalogo.js
+node scripts/popular-imagens.js
 ```
 
 ## Arquitetura em camadas
