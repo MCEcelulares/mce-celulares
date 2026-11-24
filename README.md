@@ -31,7 +31,6 @@ Mudou um `.env`? Recrie o serviço: `docker compose up -d --force-recreate <serv
 ## Testes
 
 - **Por serviço:** `cd vendas-service && npm ci && npx tsc --noEmit && npx jest --runInBand`. Identidade e Catálogo usam um MySQL de verdade, então rodam dentro da rede do Docker.
-- **Ponta a ponta:** `node e2e/executar.js` (com `GATEWAY_PAGAMENTO=simulado`).
 
 ## Dados de demonstração
 
