@@ -99,6 +99,33 @@ node e2e/executar.js
 ```
 Antes, suba os limites de login e cadastro no `identidade-service/.env` (instruções em [e2e/README.md](e2e/README.md)). O [CI](.github/workflows/ci.yml) roda tipagem e testes dos 5 serviços (com um MySQL próprio), a validação dos contratos contra as rotas, a regra de camadas (`python3 scripts/verificar-camadas.py`), `nginx -t` e o build das imagens.
 
+## Dados de demonstração (ambiente de desenvolvimento)
+Com o ambiente no ar e o administrador criado pelo seed do Identidade, popule o catálogo (6 categorias, 19 marcas e 37 produtos realistas):
+```bash
+node scripts/popular-catalogo.js     # pode repetir: o que já existe é pulado
+```
+Categorias: Celulares, Notebooks, Consoles, Fones, Periféricos e Jogos. Preços e especificações são aproximados, para demonstração, e os produtos
+ficam sem foto (envie pelo painel administrativo do front, na edição do produto). Um produto (Xbox Series X) fica sem estoque de propósito, para
+mostrar o estado "Indisponível".
+
+Para **zerar** os dados antes de uma demonstração (**apaga usuários, pedidos, pagamentos, notificações e o catálogo; mantém a estrutura, os
+cargos e as permissões**). Faça uma cópia antes, se houver algo a guardar:
+```bash
+for s in identidade catalogo vendas pagamento notificacao; do
+  docker exec ${s}_db sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --databases '${s}'_db' > backup_${s}.sql   # cópia
+done
+trunc() { docker exec $1_db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" '$1'_db -e "SET FOREIGN_KEY_CHECKS=0; '"$2"' SET FOREIGN_KEY_CHECKS=1;"'; }
+trunc identidade "TRUNCATE usuario_cargo; TRUNCATE endereco; TRUNCATE usuario;"
+trunc catalogo   "TRUNCATE reserva_estoque; TRUNCATE produto; TRUNCATE categoria; TRUNCATE marca;"
+trunc vendas     "TRUNCATE item_carrinho; TRUNCATE carrinho; TRUNCATE item_pedido; TRUNCATE endereco_pedido; TRUNCATE usuario_pedido; TRUNCATE pedido;"
+trunc pagamento  "TRUNCATE pagamento;"
+trunc notificacao "TRUNCATE notificacao_log;"
+docker exec redis redis-cli FLUSHALL
+docker exec catalogo sh -c 'find /app/uploads -type f -delete'          # imagens enviadas
+docker exec identidade npx sequelize-cli db:seed --seed 202612101317-seed-admin.js   # recria o administrador (ADMIN_EMAIL/ADMIN_SENHA)
+node scripts/popular-catalogo.js
+```
+
 ## Arquitetura em camadas
 Cada serviço segue `routes → controllers → services → repositories → models`; só os repositories falam com o Sequelize (ADR-015). Mapa completo: [arquitetura-em-camadas.md](documentacao-arquiteturial/arquitetura-em-camadas.md). Ao criar uma entidade nova, crie o repository dela e rode `python3 scripts/verificar-camadas.py`.
 
