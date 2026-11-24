@@ -494,6 +494,7 @@ describe('POST /pagamentos/:idPedido/sincronizar (plano B do webhook)', () => {
 
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('APROVADO');
+    expect(r.body.data_pagamento).not.toBeNull();
     expect(gateway.buscarPagamentosPorReferencia).toHaveBeenCalledWith('77');
     expect(atualizarStatus).toHaveBeenCalledWith(77, 'PAGO');
     expect(publicar).toHaveBeenCalledTimes(1);

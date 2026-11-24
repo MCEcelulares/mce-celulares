@@ -116,12 +116,26 @@ describe('Mercado Pago — iniciar (preferência)', () => {
     const corpo = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(corpo.notification_url).toBe('https://loja.com/pagamento/pagamentos/webhook');
     expect(corpo.back_urls).toEqual({
-      success: 'https://loja.com/pedidos/77',
-      pending: 'https://loja.com/pedidos/77',
-      failure: 'https://loja.com/pedidos/77',
+      success: 'https://loja.com/checkout/retorno/77',
+      pending: 'https://loja.com/checkout/retorno/77',
+      failure: 'https://loja.com/checkout/retorno/77',
     });
     expect(corpo.auto_return).toBe('approved');
   });
+
+  it.each([['http://localhost:4000'], ['https://localhost:4000'], ['http://127.0.0.1:4000'], ['http://loja.com']])(
+    'com FRONTEND_URL %s manda as URLs de retorno mas NÃO o auto_return (o Mercado Pago o recusa fora de https público)',
+    async (urlLoja) => {
+      process.env.FRONTEND_URL = urlLoja;
+      fetchMock.mockResolvedValue(resposta(201, { id: 'pref-1', init_point: 'https://mp.test/pref-1' }));
+
+      await gateway.iniciar(dados);
+
+      const corpo = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(corpo.back_urls.success).toBe(`${urlLoja}/checkout/retorno/77`);
+      expect(corpo.auto_return).toBeUndefined();
+    },
+  );
 
   it('limita o link ao prazo do pedido (expires + datas com deslocamento +00:00)', async () => {
     fetchMock.mockResolvedValue(resposta(201, { id: 'pref-1', init_point: 'x' }));
