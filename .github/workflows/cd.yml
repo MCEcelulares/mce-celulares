@@ -2,7 +2,7 @@ name: CD
 
 # Publica as imagens dos 5 serviços no GitHub Container Registry a cada tag de versão (v1.0.0, v1.1.0...)
 # e, se o servidor estiver configurado, faz o deploy por SSH com verificação de saúde e rollback automático.
-# Estratégia e limites: documentacao-arquiteturial/ADRs/ADR-014-cd-com-rollback-por-tag.md
+# Estratégia e limites: docs/entrega.md
 
 on:
   push:

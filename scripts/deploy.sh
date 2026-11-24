@@ -48,7 +48,7 @@ fi
 
 echo "✗ ${TAG} falhou" >&2
 if [[ -z "$ATUAL" || "$ATUAL" == "$TAG" ]]; then
-  echo "sem versão anterior para restaurar: investigue (docs: operacao/runbook-incidentes.md)" >&2
+  echo "sem versão anterior para restaurar: investigue (docs: docs/entrega.md)" >&2
   exit 1
 fi
 
@@ -56,6 +56,6 @@ echo "→ rollback automático para ${ATUAL}" >&2
 if aplicar "$ATUAL" && saudavel; then
   echo "✓ ${ATUAL} restaurada; ${TAG} NÃO está no ar" >&2
 else
-  echo "✗ a versão ${ATUAL} também não ficou saudável: ação manual (operacao/runbook-incidentes.md)" >&2
+  echo "✗ a versão ${ATUAL} também não ficou saudável: ação manual (docs/entrega.md)" >&2
 fi
 exit 1
