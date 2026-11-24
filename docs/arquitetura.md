@@ -74,4 +74,4 @@ Linha cheia: chamada HTTP direta. Linha tracejada: Redis (cache ou evento).
 - **Entre serviços, por HTTP:** quando precisam de uma resposta na hora. O Vendas pergunta preço e estoque ao Catálogo; o Pagamento consulta o pedido no Vendas.
 - **Pelo Redis, por evento:** quando só precisam avisar. Vendas e Pagamento publicam, a Notificação reage e manda o e-mail. Quem publica não espera resposta.
 
-As decisões por trás deste desenho estão em [decisoes.md](decisoes.md).
+As decisões por trás deste desenho estão nos [ADRs](../documentacao-arquiteturial/ADRs/).

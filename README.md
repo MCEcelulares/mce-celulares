@@ -57,7 +57,7 @@ Cada serviço segue as mesmas camadas: `routes → controllers → services → 
 
 - [Arquitetura (C4)](docs/arquitetura.md)
 - [DDD: contextos e agregados](docs/ddd.md)
-- [Decisões (ADRs)](docs/decisoes.md)
+- [Decisões (ADRs)](documentacao-arquiteturial/ADRs/)
 - [Qualidade: SLOs, resiliência e observabilidade](docs/qualidade.md)
 - [Entrega: pipeline, deploy e runbook](docs/entrega.md)
 - [Gestão do projeto (Jira, Cynefin, ciclo de vida)](tech-forge/)
