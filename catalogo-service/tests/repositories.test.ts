@@ -27,7 +27,7 @@ const criarProduto = (nome: string, extra: Record<string, unknown> = {}) =>
     ...extra,
   });
 
-const palavra = `xb${run}`; // única por execução, para a busca não pegar sobras de outras execuções
+const palavra = `xb${run}`;
 const criteriosBase = { ordenar: 'recentes' as const, limite: 50, pagina: 1 };
 
 beforeAll(async () => {

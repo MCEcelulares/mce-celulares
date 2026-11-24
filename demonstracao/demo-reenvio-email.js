@@ -1,9 +1,4 @@
 /* eslint-disable no-console */
-// Demonstra a resiliência do envio de e-mail: com o Mailpit parado o envio falha (registro FALHA); religado o Mailpit,
-// a rotina de reenvio automático entrega o e-mail sozinha (ADR-008). Leva alguns minutos: a primeira espera de reenvio
-// é de 2 minutos e a rotina verifica a cada minuto.
-//   node demonstracao/demo-reenvio-email.js          (ambiente no ar com --profile dev; GATEWAY_PAGAMENTO=simulado)
-// Para o container "mailpit" e o religa no fim, mesmo se algo falhar. Cria dados de teste.
 const { execFileSync } = require('child_process');
 const { criarContexto, esperar, RAIZ } = require('../e2e/lib');
 
@@ -53,7 +48,7 @@ const minutos = (inicio) => ((Date.now() - inicio) / 60000).toFixed(1);
   console.log('\nlogs da Notificação sobre o pedido:');
   for (const linha of logs.split('\n')) {
     if (!mostrar.some((m) => linha.includes(m))) continue;
-    try { const j = JSON.parse(linha); if (j.idPedido === idPedido || j.reenviadas !== undefined || j.tentativa !== undefined) console.log(`  ${j.time?.slice(11, 19)} ${j.msg}${j.idPedido ? ` [idPedido=${j.idPedido} rodadas=${j.rodadas ?? '-'}]` : ''}${j.tentativa ? ` [tentativa=${j.tentativa}]` : ''}${j.reenviadas ? ` [reenviadas=${j.reenviadas}]` : ''}`); } catch { /* linha não JSON */ }
+    try { const j = JSON.parse(linha); if (j.idPedido === idPedido || j.reenviadas !== undefined || j.tentativa !== undefined) console.log(`  ${j.time?.slice(11, 19)} ${j.msg}${j.idPedido ? ` [idPedido=${j.idPedido} rodadas=${j.rodadas ?? '-'}]` : ''}${j.tentativa ? ` [tentativa=${j.tentativa}]` : ''}${j.reenviadas ? ` [reenviadas=${j.reenviadas}]` : ''}`); } catch { }
   }
 })().catch((erro) => {
   console.error('ERRO:', erro.message);

@@ -1,4 +1,3 @@
-// Os testes não usam MySQL, Redis nem SMTP reais.
 jest.mock('ioredis', () => require('ioredis-mock'));
 
 jest.mock('../src/config/database', () => ({

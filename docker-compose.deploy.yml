@@ -1,7 +1,3 @@
-# Sobreposição para servidor: usa as imagens publicadas pelo CD em vez de construir no local.
-# REGISTRY (opcional, padrão ghcr.io) permite apontar para outro registro, por exemplo um local para ensaiar o deploy.
-# Uso: REGISTRY_OWNER=<dono> TAG=v1.0.0 docker compose -f docker-compose.yml -f docker-compose.deploy.yml up -d --no-build
-# (scripts/deploy.sh e scripts/rollback.sh fazem isso e conferem a saúde).
 services:
   identidade:
     image: ${REGISTRY:-ghcr.io}/${REGISTRY_OWNER:?defina REGISTRY_OWNER}/mce-identidade-service:${TAG:?defina TAG}

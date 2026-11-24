@@ -1,8 +1,5 @@
-// Catálogo pelo gateway: cadastro, filtros, estoque do painel, reservas por pedido (rotas internas), imagens,
-// visão do painel e inativação.
 const { criarContexto } = require('./lib');
 
-// PNG 1x1 válido (a assinatura de 8 bytes é o que o serviço confere).
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64'
@@ -34,7 +31,6 @@ async function executar() {
   ok(iphone.preco === 4999.9 && iphone.marca?.id_marca === base.marca, 'resposta com preço numérico e marca aninhada');
   ok((await req('POST', '/catalogo/produtos', { id_marca: 999999, id_categoria: base.categoria, nome: 'Fantasma', preco: 10 }, admin)).s === 400, 'marca inexistente -> 400');
 
-  // listagem: { dados, paginacao: { pagina, limite, total, totalPaginas } }
   const L = (q) => req('GET', `/catalogo/produtos?marca=${base.marca}&${q}`);
   r = await L('');
   ok(r.s === 200 && r.b.paginacao?.total === 3 && r.b.dados.length === 3, `lista da marca -> ${r.b.paginacao?.total}`);
@@ -52,7 +48,6 @@ async function executar() {
   ok((await req('GET', `/catalogo/produtos/${iphone.id_produto}`)).b.preco === 4599.9, 'detalhe público reflete o novo preço');
   ok((await req('PATCH', `/catalogo/produtos/${iphone.id_produto}`, { preco: 1 })).s === 401, 'PATCH sem token -> 401');
 
-  // ajuste de estoque pelo painel (RF10)
   const ajustar = (ajuste, token = admin) => req('PATCH', `/catalogo/produtos/${iphone.id_produto}/estoque`, { ajuste }, token);
   const cliente = await c.novoCliente('catalogo');
   ok((await ajustar(1, null)).s === 401, 'ajuste de estoque sem token -> 401');
@@ -61,10 +56,8 @@ async function executar() {
   r = await ajustar(-100); ok(r.s === 409 && (await c.estoqueDe(iphone)) === 7, 'ajuste que deixaria negativo -> 409, estoque intacto');
   r = await ajustar(-2); ok(r.s === 200 && r.b.estoque === 5, 'ajuste -2 volta ao estoque inicial (5)');
 
-  // rotas internas: bloqueadas no gateway; só o Vendas (token de serviço) chega nelas
   ok((await req('GET', `/catalogo/interno/produtos?ids=${iphone.id_produto}`)).s === 404, 'gateway bloqueia /catalogo/interno/ (GET) -> 404');
   ok((await req('POST', '/catalogo/interno/reservas', { id_pedido: 1, itens: [] }, admin)).s === 404, 'gateway bloqueia /catalogo/interno/ (POST, mesmo com JWT de admin) -> 404');
-  // variantes que tentam contornar o bloqueio (o Express não diferencia maiúsculas; o Nginx decodifica % e junta //)
   for (const caminho of ['/catalogo/Interno/produtos?ids=1', '/catalogo/INTERNO/reservas/1', '/catalogo/%69nterno/produtos?ids=1', '//catalogo/interno/produtos?ids=1']) {
     ok((await req('GET', caminho)).s === 404, `gateway bloqueia ${caminho} -> 404`);
   }
@@ -74,7 +67,6 @@ async function executar() {
   ok(r.s === 200 && r.b.length === 2 && r.b.find((p) => p.id_produto === iphone.id_produto)?.estoque === 5, 'GET /interno/produtos devolve nome, preço e estoque');
   ok(interno('GET', '/interno/produtos').s === 400, 'GET /interno/produtos sem ids -> 400');
 
-  // reservas por pedido (ADR-009): tudo ou nada, idempotente por pedido
   const idPedido = 900000 + (parseInt(run, 36) % 90000) * 10;
   const itens = [{ id_produto: iphone.id_produto, quantidade: 2 }, { id_produto: capa.id_produto, quantidade: 1 }];
   const reservar = (id, lista) => interno('POST', '/interno/reservas', { id_pedido: id, itens: lista });
@@ -101,7 +93,6 @@ async function executar() {
   ok(reservar(idPedido, itens).s === 409, 'reservar de novo um pedido já devolvido -> 409');
   ok(interno('POST', '/interno/reservas/999999998/devolucao').s === 404, 'devolução sem reserva -> 404 (o Vendas aceita como "nada a devolver")');
 
-  // disputa: 6 pedidos querem 1 unidade cada do iPhone, que tem 5; ajusta para 3 e confere que só 3 vencem
   await ajustar(-2);
   const disputa = await Promise.all(
     Array.from({ length: 6 }, (_, i) =>
@@ -114,7 +105,6 @@ async function executar() {
   for (let i = 0; i < 6; i++) interno('POST', `/interno/reservas/${idPedido + 100 + i}/devolucao`);
   ok((await c.estoqueDe(iphone)) === 3, 'devolver as reservas do teste restaura o estoque (3)');
 
-  // imagens (RF15, RNF07)
   const enviar = (id, form, token = admin) => req('POST', `/catalogo/produtos/${id}/imagem`, form, token);
   r = await enviar(capa.id_produto, formulario(PNG_1X1), null);
   ok(r.s === 401, 'upload sem token -> 401');
@@ -136,7 +126,6 @@ async function executar() {
   ok((await req('DELETE', `/catalogo/produtos/${capa.id_produto}/imagem`, null, admin)).s === 204, 'DELETE da imagem -> 204');
   ok((await req('GET', trocada.b.imagem)).s === 404 && (await req('GET', `/catalogo/produtos/${capa.id_produto}`)).b.imagem === null, 'imagem removida do produto e do disco');
 
-  // inativação (DELETE inativa) e visão do painel
   ok((await req('DELETE', `/catalogo/produtos/${galaxy.id_produto}`)).s === 401, 'DELETE do produto sem token -> 401');
   ok((await req('DELETE', `/catalogo/produtos/${galaxy.id_produto}`, null, admin)).s === 204, 'DELETE do produto inativa -> 204');
   ok((await req('GET', `/catalogo/produtos/${galaxy.id_produto}`)).s === 404, 'inativo some do detalhe público');
@@ -153,7 +142,6 @@ async function executar() {
   ok(!(await req('GET', '/catalogo/categorias')).b.some((x) => x.id_categoria === base.categoria), 'categoria inativa some da lista pública');
   ok((await req('GET', '/catalogo/categorias?incluirInativos=true', null, admin)).b.some((x) => x.id_categoria === base.categoria), 'categoria inativa aparece no painel');
 
-  // resumo do painel (RF46)
   ok((await req('GET', '/catalogo/produtos/resumo', null, cliente.token)).s === 403, 'resumo sem dashboard:ver -> 403');
   r = await req('GET', '/catalogo/produtos/resumo', null, admin);
   ok(r.s === 200 && r.b.total_produtos >= 3 && r.b.produtos_inativos >= 1 && typeof r.b.valor_em_estoque === 'number', `GET /produtos/resumo -> ${JSON.stringify(r.b)}`);

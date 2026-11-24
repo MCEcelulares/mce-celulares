@@ -6,7 +6,6 @@ on:
   pull_request:
 
 jobs:
-  # Tipagem e testes de cada serviço. Os serviços com testes de integração usam o MySQL abaixo.
   servicos:
     runs-on: ubuntu-latest
     services:
@@ -59,14 +58,12 @@ jobs:
         run: npx sequelize-cli db:seed:all
       - run: npx jest --runInBand
 
-  # Os workflows precisam ser válidos (o actionlint também confere os scripts shell embutidos).
   workflows:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:latest -color
 
-  # Os contratos precisam ser YAML válido e bater com as rotas do código (nenhuma rota sem documentação).
   contratos:
     runs-on: ubuntu-latest
     steps:
@@ -74,14 +71,12 @@ jobs:
       - run: pip install pyyaml
       - run: python3 scripts/verificar-contratos.py
 
-  # Arquitetura em camadas (ADR-015): só os repositories falam com o banco.
   camadas:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/verificar-camadas.py
 
-  # O gateway precisa ter configuração válida (e o /interno do Catálogo bloqueado).
   gateway:
     runs-on: ubuntu-latest
     steps:
@@ -96,12 +91,10 @@ jobs:
         run: grep -qF 'location ~* ^/catalogo/interno(/|$) {' infra/nginx/nginx.conf
       - name: compose válido (com e sem o profile dev)
         run: |
-          # os .env não vão para o git; arquivos vazios bastam para validar a sintaxe
           for s in identidade catalogo vendas pagamento notificacao; do touch "$s-service/.env"; done
           docker compose config -q
           docker compose --profile dev config -q
 
-  # Garante que a imagem de cada serviço compila no Linux (pega package-lock fora de sincronia com o `npm ci` do Docker).
   imagens:
     runs-on: ubuntu-latest
     strategy:

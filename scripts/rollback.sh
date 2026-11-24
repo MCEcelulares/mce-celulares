@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Volta para uma versão já publicada. Sem argumento, volta para a anterior ao último deploy bem-sucedido.
-# Uso: REGISTRY_OWNER=<dono> ./scripts/rollback.sh [tag]
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,5 +13,4 @@ if [[ -z "$DESTINO" ]]; then
 fi
 
 echo "→ rollback ${ATUAL:-?} → ${DESTINO}"
-# O deploy.sh aplica, confere a saúde e atualiza o estado; se ${DESTINO} não ficar saudável ele avisa.
 exec ./scripts/deploy.sh "$DESTINO"

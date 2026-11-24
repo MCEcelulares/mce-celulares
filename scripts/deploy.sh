@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Aplica uma versão (tag de imagem), confere a saúde dos 5 serviços e, se algo falhar, volta sozinho para a versão anterior.
-# Uso: REGISTRY_OWNER=<dono> ./scripts/deploy.sh v1.2.0
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,12 +14,10 @@ COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.deploy.yml)
 mkdir -p "$ESTADO"
 ATUAL="$(cat "$ESTADO/tag-atual" 2>/dev/null || true)"
 
-# A tag vai só no ambiente do comando (não sobrescreve a variável TAG deste script).
 aplicar() {
   TAG="$1" "${COMPOSE[@]}" pull && TAG="$1" "${COMPOSE[@]}" up -d --no-build --remove-orphans
 }
 
-# Saudável = todos os serviços respondem 200 com "status":"ok" no /health, pelo gateway.
 saudavel() {
   local servico tentativa
   for servico in "${SERVICOS[@]}"; do

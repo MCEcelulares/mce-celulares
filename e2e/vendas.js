@@ -1,5 +1,3 @@
-// Vendas pelo gateway (com Identidade, Catálogo e Notificação reais): carrinho, pedido, estoque, acesso,
-// status, corrida pela última unidade e expiração de pedido sem pagamento.
 const { criarContexto } = require('./lib');
 
 async function executar() {
@@ -21,7 +19,6 @@ async function executar() {
   const c1 = await c.novoCliente('um');
   const c2 = await c.novoCliente('dois');
 
-  // carrinho
   ok((await req('GET', '/vendas/carrinho')).s === 401, 'GET /carrinho sem token -> 401');
   r = await req('GET', '/vendas/carrinho', null, c1.token);
   ok(r.s === 200 && r.b.itens.length === 0 && r.b.total === 0, 'carrinho começa vazio');
@@ -40,7 +37,6 @@ async function executar() {
   ok((await req('DELETE', `/vendas/carrinho/itens/${idItemB}`, null, c1.token)).s === 204, 'DELETE do item B');
   r = await req('POST', '/vendas/carrinho/itens', { idProduto: B.id_produto, quantidade: 1 }, c1.token); ok(r.b.itens.length === 2, 'B de volta ao carrinho');
 
-  // pedido
   ok((await req('POST', '/vendas/pedidos', { idEndereco: c2.idEndereco }, c1.token)).s === 422, 'endereço de outro usuário -> 422');
   r = await req('POST', '/vendas/pedidos', { idEndereco: c1.idEndereco }, c1.token);
   const pedido = r.b;
@@ -53,7 +49,6 @@ async function executar() {
   ok((await req('GET', '/vendas/carrinho', null, c1.token)).b.itens.length === 0, 'carrinho antigo encerrado');
   ok((await req('POST', '/vendas/pedidos', { idEndereco: c1.idEndereco }, c1.token)).s === 422, 'carrinho vazio -> 422');
 
-  // acesso
   r = await req('GET', '/vendas/pedidos', null, c1.token); ok(r.b.total === 1, 'lista os pedidos do dono');
   ok((await req('GET', '/vendas/pedidos', null, c2.token)).b.total === 0, 'cliente 2 não vê pedidos do cliente 1');
   ok((await req('GET', `/vendas/pedidos/${pedido.id_pedido}`, null, c2.token)).s === 403, 'pedido de outro cliente -> 403');
@@ -62,14 +57,12 @@ async function executar() {
   r = await req('GET', '/vendas/pedidos?todos=true&status=AGUARDANDO_PAGAMENTO', null, admin);
   ok(r.s === 200 && r.b.dados.some((p) => p.id_pedido === pedido.id_pedido), 'admin lista todos filtrando por status');
 
-  // e-mail pelo evento pedido.criado
   const logs = await c.aguardar(async () => {
     const l = await req('GET', `/notificacao/logs/${pedido.id_pedido}`, null, admin);
     return l.s === 200 && l.b.every((x) => x.status !== 'PENDENTE') ? l.b : null;
   });
   ok(logs && logs.length === 1 && logs[0].tipo === 'PEDIDO_CRIADO' && logs[0].status === 'ENVIADO', `evento pedido.criado virou e-mail: ${JSON.stringify(logs?.map((x) => `${x.tipo}:${x.status}`))}`);
 
-  // status
   const status = (id, s, token) => req('PATCH', `/vendas/pedidos/${id}/status`, { status: s }, token);
   ok((await status(pedido.id_pedido, 'PAGO')).s === 401, 'PATCH status sem credencial -> 401');
   ok((await status(pedido.id_pedido, 'PAGO', c1.token)).s === 403, 'cliente comum não muda status -> 403');
@@ -81,14 +74,12 @@ async function executar() {
   ok((await c.estoqueDe(A)) === 5 && (await c.estoqueDe(B)) === 1, 'cancelar devolveu o estoque (A 5, B 1)');
   ok((await status(pedido.id_pedido, 'PAGO', srv)).s === 409, 'cancelado não volta a PAGO -> 409');
 
-  // corrida pela última unidade de B
   for (const cl of [c1, c2]) await req('POST', '/vendas/carrinho/itens', { idProduto: B.id_produto, quantidade: 1 }, cl.token);
   const corrida = await Promise.all([c1, c2].map((cl) => req('POST', '/vendas/pedidos', { idEndereco: cl.idEndereco }, cl.token)));
   const criados = corrida.filter((x) => x.s === 201).length;
   const recusados = corrida.filter((x) => x.s === 409).length;
   ok(criados === 1 && recusados === 1 && (await c.estoqueDe(B)) === 0, `2 clientes disputando a última unidade -> ${criados} pedido, ${recusados} recusado`);
 
-  // expiração: o pedido que ficou aguardando pagamento é cancelado e devolve o estoque
   const vencedor = corrida.find((x) => x.s === 201).b;
   c.sql('vendas', `UPDATE pedido SET data = NOW() - INTERVAL 2 HOUR WHERE id_pedido = ${vencedor.id_pedido}`);
   const dono = corrida.findIndex((x) => x.s === 201) === 0 ? c1 : c2;
@@ -102,15 +93,12 @@ async function executar() {
   ok(aposExpirar?.b?.status === 'CANCELADO', 'pedido vencido sem pagamento foi cancelado pela rotina de expiração');
   ok((await c.estoqueDe(B)) === 1, 'a expiração devolveu o estoque ao Catálogo (B 1)');
 
-  // estoque insuficiente com mais de um item e compensação
   await req('POST', '/vendas/carrinho/itens', { idProduto: C.id_produto, quantidade: 3 }, c1.token);
   await req('POST', '/vendas/carrinho/itens', { idProduto: B.id_produto, quantidade: 1 }, c1.token);
   await req('PATCH', `/catalogo/produtos/${B.id_produto}/estoque`, { ajuste: -1 }, admin);
   r = await req('POST', '/vendas/pedidos', { idEndereco: c1.idEndereco }, c1.token);
   ok(r.s === 409 && (await c.estoqueDe(C)) === 3, `item sem estoque recusa o pedido sem prender o estoque dos outros (C continua 3) -> ${r.s}`);
 
-  // pedido órfão: a reserva foi feita, mas o processo caiu antes de o pedido ficar visível. A rotina de recuperação
-  // devolve a reserva ao Catálogo e apaga o pedido.
   const c3 = await c.novoCliente('tres');
   await req('POST', '/vendas/carrinho/itens', { idProduto: C.id_produto, quantidade: 1 }, c3.token);
   r = await req('POST', '/vendas/pedidos', { idEndereco: c3.idEndereco }, c3.token);

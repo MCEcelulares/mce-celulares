@@ -1,8 +1,4 @@
 /* eslint-disable no-console */
-// Confere se o MERCADOPAGO_ACCESS_TOKEN do .env funciona, SEM cobrar nem mover dinheiro:
-//   1) cria uma preferência de teste (R$ 1,00) e mostra o link de pagamento;
-//   2) consulta pagamentos por external_reference (o que a sincronização usa).
-// Uso: npm run mp:verificar   (a partir de pagamento-service/, com o token no .env)
 require('dotenv/config');
 
 const BASE = 'https://api.mercadopago.com';

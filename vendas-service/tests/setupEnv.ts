@@ -17,7 +17,6 @@ process.env.CATALOGO_SERVICE_URL = 'http://catalogo.test:3002';
 process.env.IDENTIDADE_SERVICE_URL = 'http://identidade.test:3001';
 process.env.HTTP_TIMEOUT_MS = '200';
 process.env.HTTP_BACKOFF_BASE_MS = '1';
-// Alto de propósito: só os testes do circuit breaker o reduzem.
 process.env.CIRCUIT_FALHAS = '1000';
 process.env.RATE_LIMIT_DESLIGADO = 'true';
 process.env.PEDIDO_EXPIRA_MINUTOS = '30';

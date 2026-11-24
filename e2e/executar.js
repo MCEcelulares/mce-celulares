@@ -1,7 +1,4 @@
 /* eslint-disable no-console */
-// Roda os testes ponta a ponta contra o ambiente que está no ar (docker compose up -d).
-//   node e2e/executar.js              roda tudo
-//   node e2e/executar.js vendas       roda só o Vendas (também: catalogo, pagamento)
 const cenarios = {
   catalogo: () => require('./catalogo').executar(),
   vendas: () => require('./vendas').executar(),

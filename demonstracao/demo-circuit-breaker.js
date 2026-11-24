@@ -1,8 +1,4 @@
 /* eslint-disable no-console */
-// Demonstra o circuit breaker do Vendas: para o Catálogo, tenta fechar pedidos até o circuito abrir, religa o Catálogo
-// e mostra o circuito fechando sozinho. Também mostra o timeout/retry em ação (as primeiras tentativas demoram mais).
-//   node demonstracao/demo-circuit-breaker.js        (ambiente no ar; METRICS_TOKEN preenchido no .env do vendas-service)
-// Para o container "catalogo" por cerca de 30 s e o religa no fim, mesmo se algo falhar. Cria dados de teste.
 const { execFileSync } = require('child_process');
 const { criarContexto, lerEnv, esperar, RAIZ } = require('../e2e/lib');
 

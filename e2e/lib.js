@@ -1,12 +1,10 @@
 /* eslint-disable no-console */
-// Utilitários dos testes ponta a ponta. Sem dependências: usa só o Node 20+ (fetch, FormData) e o Docker.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, execFile } = require('child_process');
 
 const RAIZ = path.resolve(__dirname, '..');
 
-// Lê um .env simples (uma linha por variável). Basta para as variáveis usadas aqui; não interpreta chaves multilinha.
 function lerEnv(arquivo) {
   const saida = {};
   for (const linha of fs.readFileSync(path.join(RAIZ, arquivo), 'utf8').split(/\r?\n/)) {
@@ -18,7 +16,6 @@ function lerEnv(arquivo) {
 
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Espera até que a função devolva algo verdadeiro (ou acabe o tempo) e devolve o último valor.
 async function aguardar(funcao, { tentativas = 12, intervaloMs = 5000 } = {}) {
   let valor = null;
   for (let i = 0; i < tentativas; i++) {
@@ -29,21 +26,17 @@ async function aguardar(funcao, { tentativas = 12, intervaloMs = 5000 } = {}) {
   return valor;
 }
 
-// Sem shell (execFileSync): os argumentos chegam ao Docker exatamente como estão, no Windows, Linux ou Mac.
 function docker(args) {
   return execFileSync('docker', ['compose', 'exec', '-T', ...args], { cwd: RAIZ, stdio: ['ignore', 'pipe', 'ignore'] })
     .toString()
     .trim();
 }
 
-// Roda um comando SQL no banco de um serviço (dentro do container, usando as variáveis dele).
 function sql(servico, comando) {
   const script = 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "' + comando.replace(/"/g, '\\"') + '" "$MYSQL_DATABASE"';
   return docker([servico + '_db', 'sh', '-c', script]);
 }
 
-// As rotas /interno/* do Catálogo são bloqueadas no gateway (só o Vendas as usa, com o token de serviço). Para testá-las,
-// a chamada sai de dentro do container do Catálogo, que já tem o SERVICE_TOKEN. token: 'ok' | 'errado' | 'sem'.
 const SCRIPT_INTERNO =
   'const [m,p,b,t]=process.argv.slice(1);' +
   'const h={"content-type":"application/json"};' +
@@ -59,7 +52,6 @@ function interno(metodo, caminho, corpo, token = 'ok') {
   return JSON.parse(saida.toString().trim());
 }
 
-// Versão assíncrona: permite disparar várias chamadas ao mesmo tempo (disputa de estoque).
 function internoAssincrono(metodo, caminho, corpo, token = 'ok') {
   return new Promise((resolve, reject) => {
     execFile('docker', argsInterno(metodo, caminho, corpo, token), { cwd: RAIZ }, (erro, saida) =>
@@ -113,7 +105,6 @@ function criarContexto(nome) {
 
   const identidade = lerEnv('identidade-service/.env');
 
-  // O Identidade limita o login (padrão 10 por 15 min por IP): reaproveita o do administrador entre os cenários.
   async function loginAdmin() {
     if (tokenAdminEmCache && Date.now() < tokenAdminEmCache.valeAte) return tokenAdminEmCache.token;
     const r = await req('POST', '/identidade/auth/login', { email: identidade.ADMIN_EMAIL, senha: identidade.ADMIN_SENHA });
@@ -144,7 +135,6 @@ function criarContexto(nome) {
     return { id, token, idEndereco: r.b.id_endereco, email };
   }
 
-  // Categoria, marca e dois produtos novos para o cenário (nomes com o sufixo da execução).
   async function criarCatalogoDeTeste(admin, produtos) {
     const categoria = (await req('POST', '/catalogo/categorias', { nome: `Cat ${nome} ${run}` }, admin)).b.id_categoria;
     const marca = (await req('POST', '/catalogo/marcas', { nome: `Marca ${nome} ${run}` }, admin)).b.id_marca;
