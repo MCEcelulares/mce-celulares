@@ -209,6 +209,56 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
 
+  /pagamentos/{idPedido}/forcar:
+    post:
+      tags: [Pagamentos]
+      operationId: forcarPagamento
+      summary: Confirma o pagamento sem passar pelo Mercado Pago (somente demonstração)
+      description: >-
+        Existe só para demonstrações em que o Mercado Pago não está disponível. Fica
+        desligado por padrão: sem PAGAMENTO_FORCADO=true no serviço, responde 404.
+        Permitido apenas ao dono do pedido, que precisa estar aguardando pagamento.
+        Registra o pagamento como aprovado, muda o pedido para PAGO no Vendas e publica
+        pagamento.confirmado, como num pagamento real. Já aprovado devolve o pagamento.
+      parameters:
+        - in: path
+          name: idPedido
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Pagamento aprovado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pagamento" }
+        "400": { $ref: "#/components/responses/DadosInvalidos" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: O pedido é de outro usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "404":
+          description: Pedido inexistente, ou recurso desligado no serviço
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "409":
+          description: O pedido não está aguardando pagamento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "429":
+          description: Muitas tentativas a partir deste IP
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "503":
+          description: Vendas indisponível
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
   /pagamentos/webhook:
     post:
       tags: [Webhook]
