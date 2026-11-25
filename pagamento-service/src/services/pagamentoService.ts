@@ -198,6 +198,36 @@ export async function processarNotificacao(idPagamentoExterno: string) {
   await aplicarResultado(pagamento, info);
 }
 
+export async function forcarPagamento(usuario: TokenPayload, idPedido: number) {
+  if (process.env.PAGAMENTO_FORCADO !== 'true') throw new ErroHttp(404, 'Recurso indisponível');
+
+  const pedido = await vendas.buscarPedido(idPedido);
+  if (!pedido) throw new ErroHttp(404, 'Pedido não existe');
+  if (pedido.cliente?.id_usuario !== usuario.id_usuario) {
+    throw new ErroHttp(403, 'Sem permissão para pagar este pedido');
+  }
+
+  let pagamento = await pagamentoRepository.buscarPorPedido(idPedido);
+  if (pagamento?.status === 'APROVADO') return paraResposta(pagamento);
+  if (pedido.status !== 'AGUARDANDO_PAGAMENTO') {
+    throw new ErroHttp(409, `O pedido não está aguardando pagamento (status: ${pedido.status})`);
+  }
+
+  if (!pagamento) {
+    pagamento = await pagamentoRepository.criar({
+      id_pedido: idPedido,
+      id_usuario: usuario.id_usuario,
+      metodo_pagamento: 'FORCADO',
+      valor: Number(pedido.valor_total),
+      status: 'PENDENTE',
+    });
+  }
+
+  await confirmar(pagamento, 'FORCADO');
+  logger.warn({ idPedido }, 'pagamento forçado (modo demonstração)');
+  return paraResposta(pagamento);
+}
+
 export async function sincronizarPagamento(usuario: TokenPayload, idPedido: number) {
   const pagamento = await pagamentoRepository.buscarPorPedido(idPedido);
   if (!pagamento) throw new ErroHttp(404, 'Nenhum pagamento para esse pedido');
