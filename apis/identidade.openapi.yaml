@@ -233,7 +233,7 @@ paths:
               required: [senhaAtual, novaSenha]
               properties:
                 senhaAtual: { type: string }
-                novaSenha: { type: string, minLength: 6, maxLength: 72 }
+                novaSenha: { type: string, minLength: 8, maxLength: 72, pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$', description: "Letra maiúscula, minúscula e número." }
       responses:
         "204": { description: Senha alterada }
         "400": { $ref: "#/components/responses/DadosInvalidos" }
@@ -831,7 +831,7 @@ components:
       properties:
         nome: { type: string, minLength: 2 }
         email: { type: string, format: email }
-        senha: { type: string, minLength: 6, maxLength: 72 }
+        senha: { type: string, minLength: 8, maxLength: 72, pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$', description: "Letra maiúscula, minúscula e número." }
         cpf: { type: string, example: "529.982.247-25" }
         telefone: { type: string, example: "(44) 99999-8888" }
     PerfilEdicao:
