@@ -14,14 +14,14 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const decodificar = (token: string) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
 
 const cadastrar = (tag: string) =>
-  api.post('/usuarios').send({ nome: `Teste ${tag}`, email: email(tag), senha: '123456', cpf: cpfDeTeste, telefone: '(44) 99999-8888' });
-const logar = (tag: string, senha = '123456') => api.post('/auth/login').send({ email: email(tag), senha });
+  api.post('/usuarios').send({ nome: `Teste ${tag}`, email: email(tag), senha: 'Senha123', cpf: cpfDeTeste, telefone: '(44) 99999-8888' });
+const logar = (tag: string, senha = 'Senha123') => api.post('/auth/login').send({ email: email(tag), senha });
 
 async function criarAdmin(tag: string) {
   const usuario = await Usuario.create({
     nome: 'Admin Teste',
     email: email(tag),
-    senha: await bcrypt.hash('123456', 4),
+    senha: await bcrypt.hash('Senha123', 4),
     admin: true,
   });
   const cargo = await Cargo.findOne({ where: { nome: 'administrador' } });
@@ -67,11 +67,19 @@ afterAll(async () => {
 });
 
 describe('cadastro e validação (RF01)', () => {
-  const base = { nome: 'Maria', email: email('maria'), senha: '123456', cpf: cpfDeTeste, telefone: '44999998888' };
+  const base = { nome: 'Maria', email: email('maria'), senha: 'Senha123', cpf: cpfDeTeste, telefone: '44999998888' };
 
   it('recusa cadastro sem CPF e telefone', async () => {
-    const r = await api.post('/usuarios').send({ nome: 'Maria', email: email('maria'), senha: '123456' });
+    const r = await api.post('/usuarios').send({ nome: 'Maria', email: email('maria'), senha: 'Senha123' });
     expect(r.status).toBe(400);
+  });
+
+  it.each(['abc', '12345678', 'senhasemnumero', 'SENHA1234', 'senha1234'])('recusa senha fraca %s', async (senha) => {
+    expect((await api.post('/usuarios').send({ ...base, senha })).status).toBe(400);
+  });
+
+  it.each(['semarroba.com', 'a@b', 'a@@b.com', '.a@b.com', 'a..b@b.com', 'a@b.c', 'a b@b.com', 'a@-b.com'])('recusa e-mail inválido %s', async (valor) => {
+    expect((await api.post('/usuarios').send({ ...base, email: valor })).status).toBe(400);
   });
 
   it.each(['111.111.111-11', '529.982.247-24'])('recusa CPF inválido %s', async (cpf) => {
@@ -101,7 +109,7 @@ describe('cadastro e validação (RF01)', () => {
 describe('login e sessão (RF02, RF03)', () => {
   it('recusa senha errada e usuário inexistente com a mesma resposta', async () => {
     const errada = await logar('cliente', 'errada');
-    const inexistente = await api.post('/auth/login').send({ email: email('ninguem'), senha: '123456' });
+    const inexistente = await api.post('/auth/login').send({ email: email('ninguem'), senha: 'Senha123' });
     expect(errada.status).toBe(401);
     expect(inexistente.status).toBe(401);
     expect(errada.body).toEqual(inexistente.body);
@@ -183,12 +191,12 @@ describe('perfil e senha (RF04)', () => {
     await cadastrar('senha');
     const { token, refreshToken } = (await logar('senha')).body;
     const rota = '/usuarios/me/senha';
-    expect((await api.patch(rota).set(auth(token)).send({ senhaAtual: 'errada', novaSenha: 'abcdef' })).status).toBe(401);
-    expect((await api.patch(rota).set(auth(token)).send({ senhaAtual: '123456', novaSenha: '123456' })).status).toBe(400);
-    expect((await api.patch(rota).set(auth(token)).send({ senhaAtual: '123456', novaSenha: 'abcdef' })).status).toBe(204);
+    expect((await api.patch(rota).set(auth(token)).send({ senhaAtual: 'errada', novaSenha: 'Nova1234' })).status).toBe(401);
+    expect((await api.patch(rota).set(auth(token)).send({ senhaAtual: 'Senha123', novaSenha: 'Senha123' })).status).toBe(400);
+    expect((await api.patch(rota).set(auth(token)).send({ senhaAtual: 'Senha123', novaSenha: 'Nova1234' })).status).toBe(204);
     expect((await api.post('/auth/refresh').send({ refreshToken })).status).toBe(401);
-    expect((await logar('senha', '123456')).status).toBe(401);
-    expect((await logar('senha', 'abcdef')).status).toBe(200);
+    expect((await logar('senha', 'Senha123')).status).toBe(401);
+    expect((await logar('senha', 'Nova1234')).status).toBe(200);
   });
 });
 
@@ -445,7 +453,7 @@ describe('observabilidade (RNF05, RNF11)', () => {
   });
 
   it('contabiliza o erro de negócio na rota certa (/auth/login), para os SLIs enxergarem as falhas', async () => {
-    expect((await api.post('/auth/login').send({ email: email('ninguem-metricas'), senha: '123456' })).status).toBe(401);
+    expect((await api.post('/auth/login').send({ email: email('ninguem-metricas'), senha: 'Senha123' })).status).toBe(401);
     const r = await api.get('/metrics').set('Authorization', 'Bearer token-de-teste');
     expect(r.text).toContain('metodo="POST",rota="/auth/login",status="401"');
     expect(r.text).not.toContain('rota="/login",status="401"');

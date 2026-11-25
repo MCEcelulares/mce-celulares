@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { cpfSchema, telefoneSchema, senhaSchema } from "./camposComuns";
+import { cpfSchema, telefoneSchema, senhaSchema, emailSchema } from "./camposComuns";
 
 export const criarUsuarioSchema = z.object({
   nome: z.string().trim().min(2).max(255),
-  email: z.string().trim().toLowerCase().email(),
+  email: emailSchema,
   senha: senhaSchema,
   cpf: cpfSchema,
   telefone: telefoneSchema,
@@ -24,7 +24,7 @@ export const atualizarPerfilSchema = z
 export const atualizarUsuarioAdminSchema = z
   .object({
     nome: z.string().trim().min(2).max(255),
-    email: z.string().trim().toLowerCase().email(),
+    email: emailSchema,
     cpf: cpfSchema,
     telefone: telefoneSchema,
   })
