@@ -34,6 +34,14 @@ export async function sincronizar(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+export async function forcar(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    res.status(200).json(await pagamentoService.forcarPagamento(req.usuarioAutenticado!, Number(req.params.idPedido)));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function webhook(req: Request, res: Response, next: NextFunction) {
   try {
     const tipo = req.body?.type ?? req.query.type;

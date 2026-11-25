@@ -20,6 +20,14 @@ router.post(
   pagamentoController.sincronizar
 );
 
+router.post(
+  '/:idPedido/forcar',
+  autenticar,
+  limitarPagamento,
+  validar(idPedidoParamSchema, 'params'),
+  pagamentoController.forcar
+);
+
 router.get('/', autenticar, exigirPermissao('pedidos:listar-todos'), validar(listarPagamentosQuerySchema, 'query'), pagamentoController.listar);
 
 router.get('/:idPedido', autenticar, validar(idPedidoParamSchema, 'params'), pagamentoController.buscar);
